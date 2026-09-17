@@ -3,6 +3,8 @@ export interface Vector2D {
   y: number;
 }
 
+export type HeroClassId = 'commando' | 'demolitionist' | 'scout';
+
 export interface Player {
   x: number;
   y: number;
@@ -24,11 +26,57 @@ export interface Player {
   shieldActive: boolean;
   shieldCooldown: number;
   invincibleTimer: number;
+  heroClass: HeroClassId;
+
+  // Tactical Dash / Dodge Roll
+  dashCooldown: number;
+  dashCooldownMax: number;
+  dashActive: boolean;
+  dashTimer: number;
+  dashVx: number;
+  dashVy: number;
+  dashTrailTimer: number;
+
+  // Auto-Weapon 1: Orbiting Energy Blades (Plasma Saw)
+  orbitingBladesCount: number; // 0 to 4
+  orbitingBladesRadius: number;
+  orbitingBladesAngle: number;
+  orbitingBladesDamage: number;
+
+  // Auto-Weapon 2: Support Combat Drone
+  droneActive: boolean;
+  droneLevel: number;
+  droneAngle: number;
+  droneFireCooldown: number;
+
+  // Auto-Weapon 3: Tesla Chain-Lightning
+  teslaActive: boolean;
+  teslaLevel: number;
+  teslaCooldown: number;
+
   // Active temporary buffs from Supply Drops
   damageBoostTimer: number; // seconds remaining
   magnetBoostTimer: number; // seconds remaining
   rapidBoostTimer: number;  // seconds remaining
   speedBoostTimer: number;  // seconds remaining
+}
+
+export interface TeslaBolt {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  life: number;
+  maxLife: number;
+}
+
+export interface DroneBeam {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  life: number;
+  maxLife: number;
 }
 
 export type SupplyDropType = 'MASSIVE_DAMAGE' | 'SUPER_MAGNET' | 'OVERDRIVE_RAPID' | 'HYPER_SPEED' | 'TACTICAL_NUKE';

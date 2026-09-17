@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { UpgradeOption } from '../game/types';
-import { Zap, Sword, Crosshair, Flame, Footprints, Heart, Compass, Bomb, Shield, Wind, Sparkles } from 'lucide-react';
+import { Zap, Sword, Crosshair, Flame, Footprints, Heart, Compass, Bomb, Shield, Wind, Sparkles, Disc, Bot } from 'lucide-react';
 
 interface UpgradeModalProps {
   options: UpgradeOption[];
@@ -19,7 +19,9 @@ const iconMap: { [key: string]: React.ElementType } = {
   Bomb,
   Shield,
   Wind,
-  Sparkles
+  Sparkles,
+  Disc,
+  Bot
 };
 
 export const UpgradeModal: React.FC<UpgradeModalProps> = ({ options, onSelect, level }) => {

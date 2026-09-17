@@ -1,4 +1,5 @@
-import { Player, Zombie, Bullet, Coin, FloatingText, Particle, BloodSplat, Barrel, GameState, SupplyDrop, SupplyDropType, BossShockwave } from './types';
+import { Player, Zombie, Bullet, Coin, FloatingText, Particle, BloodSplat, Barrel, GameState, SupplyDrop, SupplyDropType, BossShockwave, TeslaBolt, DroneBeam } from './types';
+import { HeroClassId, HERO_CLASSES } from './classes';
 import { sounds } from './audio';
 
 export interface GameCallbacks {
@@ -49,6 +50,10 @@ export class GameEngine {
   public barrels: Barrel[] = [];
   public supplyDrops: SupplyDrop[] = [];
   public shockwaves: BossShockwave[] = [];
+  public teslaBolts: TeslaBolt[] = [];
+  public droneBeams: DroneBeam[] = [];
+  public dashGhosts: { x: number; y: number; angle: number; color: string; alpha: number; radius: number }[] = [];
+  public selectedHeroClass: HeroClassId = 'commando';
 
   // Supply Drop Spawning
   public supplyDropTimer = 0;
@@ -98,28 +103,66 @@ export class GameEngine {
     this.setupEventListeners();
   }
 
-  private createDefaultPlayer(): Player {
+  public setHeroClass(heroClass: HeroClassId) {
+    this.selectedHeroClass = heroClass;
+    this.player = this.createDefaultPlayer(heroClass);
+  }
+
+  private createDefaultPlayer(heroClass?: HeroClassId): Player {
+    const clsId = heroClass || this.selectedHeroClass;
+    const config = HERO_CLASSES[clsId] || HERO_CLASSES['commando'];
+    this.selectedHeroClass = clsId;
+
     return {
       x: this.arenaWidth / 2,
       y: this.arenaHeight / 2,
       radius: 18,
-      speed: 3.8, // Slightly more deliberate initial pace (tighter maneuvering required)
-      baseSpeed: 3.8,
-      hp: 100,
-      maxHp: 100,
+      speed: config.baseSpeed,
+      baseSpeed: config.baseSpeed,
+      hp: config.baseHp,
+      maxHp: config.baseHp,
       angle: 0,
       fireCooldown: 0,
-      fireRate: 2.8, // Tighter early fire rate (challenging yet fair start)
-      bulletDamage: 20, // 20 dmg vs 26 hp zombies means 2 shots to down early zombies
+      fireRate: config.baseFireRate,
+      bulletDamage: config.baseBulletDamage,
       bulletSpeed: 10.5,
-      bulletPierce: 1,
+      bulletPierce: config.basePierce,
       bulletCount: 1,
       bulletSpread: 0.15,
-      magnetRange: 120,
-      explosiveRadius: 0,
+      magnetRange: config.magnetRange,
+      explosiveRadius: clsId === 'demolitionist' ? 35 : 0,
       shieldActive: false,
       shieldCooldown: 0,
       invincibleTimer: 0,
+      heroClass: clsId,
+
+      // Tactical Dash / Dodge Roll
+      dashCooldown: 0,
+      dashCooldownMax: config.dashCooldown,
+      dashActive: false,
+      dashTimer: 0,
+      dashVx: 0,
+      dashVy: 0,
+      dashTrailTimer: 0,
+
+      // Auto-Weapon 1: Orbiting Energy Blades (Demolitionist starts with 1)
+      orbitingBladesCount: clsId === 'demolitionist' ? 1 : 0,
+      orbitingBladesRadius: 75,
+      orbitingBladesAngle: 0,
+      orbitingBladesDamage: 28,
+
+      // Auto-Weapon 2: Support Combat Drone (Scout starts with 1)
+      droneActive: clsId === 'scout',
+      droneLevel: clsId === 'scout' ? 1 : 0,
+      droneAngle: 0,
+      droneFireCooldown: 0.75,
+
+      // Auto-Weapon 3: Tesla Chain-Lightning
+      teslaActive: false,
+      teslaLevel: 0,
+      teslaCooldown: 2.5,
+
+      // Active temporary buffs from Supply Drops
       damageBoostTimer: 0,
       magnetBoostTimer: 0,
       rapidBoostTimer: 0,
@@ -156,6 +199,7 @@ export class GameEngine {
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     this.canvas.addEventListener('mousemove', this.handleMouseMove);
+    this.canvas.addEventListener('contextmenu', this.handleContextMenu);
   }
 
   public destroy() {
@@ -165,10 +209,20 @@ export class GameEngine {
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
     this.canvas.removeEventListener('mousemove', this.handleMouseMove);
+    this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
   }
+
+  private handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    this.triggerDash();
+  };
 
   private handleKeyDown = (e: KeyboardEvent) => {
     this.keys[e.key.toLowerCase()] = true;
+    if (e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      this.triggerDash();
+    }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
       if (this.state === 'PLAYING') {
         this.pause();
@@ -189,8 +243,67 @@ export class GameEngine {
     this.mouseMoved = true;
   };
 
-  public startGame() {
-    this.player = this.createDefaultPlayer();
+  public triggerDash(): boolean {
+    if (this.state !== 'PLAYING') return false;
+    if (this.player.dashCooldown > 0 || this.player.dashActive) return false;
+
+    // Calculate dash vector from WASD/Arrows or Virtual Stick; fallback to facing angle
+    let moveX = 0;
+    let moveY = 0;
+    if (this.keys['w'] || this.keys['arrowup']) moveY -= 1;
+    if (this.keys['s'] || this.keys['arrowdown']) moveY += 1;
+    if (this.keys['a'] || this.keys['arrowleft']) moveX -= 1;
+    if (this.keys['d'] || this.keys['arrowright']) moveX += 1;
+
+    if (this.virtualStick.active) {
+      moveX += this.virtualStick.dx;
+      moveY += this.virtualStick.dy;
+    }
+
+    const len = Math.hypot(moveX, moveY);
+    let dashAngle = this.player.angle;
+    if (len > 0) {
+      dashAngle = Math.atan2(moveY, moveX);
+    }
+
+    const dashVelocity = 16.5; // Instant thrust impulse
+    this.player.dashVx = Math.cos(dashAngle) * dashVelocity;
+    this.player.dashVy = Math.sin(dashAngle) * dashVelocity;
+    this.player.dashActive = true;
+    this.player.dashTimer = 0.22;
+    this.player.dashCooldown = this.player.dashCooldownMax;
+    this.player.invincibleTimer = 0.35; // Invulnerable during dodge roll!
+
+    sounds.playDash();
+    this.triggerScreenShake(5);
+
+    // Initial dash particles bursting in reverse
+    const clsConfig = HERO_CLASSES[this.player.heroClass] || HERO_CLASSES['commando'];
+    for (let i = 0; i < 12; i++) {
+      const pAngle = dashAngle + Math.PI + (Math.random() - 0.5) * 1.4;
+      const spd = 2 + Math.random() * 5;
+      this.particles.push({
+        x: this.player.x,
+        y: this.player.y,
+        vx: Math.cos(pAngle) * spd,
+        vy: Math.sin(pAngle) * spd,
+        radius: 3.5,
+        color: clsConfig.accentColor,
+        alpha: 0.9,
+        life: 0,
+        maxLife: 0.35
+      });
+    }
+
+    this.addFloatingText(this.player.x, this.player.y - 24, 'DODGE ROLL!', clsConfig.accentColor, 13);
+    return true;
+  }
+
+  public startGame(heroClass?: HeroClassId) {
+    if (heroClass) {
+      this.selectedHeroClass = heroClass;
+    }
+    this.player = this.createDefaultPlayer(this.selectedHeroClass);
     this.zombies = [];
     this.bullets = [];
     this.coins = [];
@@ -199,6 +312,9 @@ export class GameEngine {
     this.bloodSplats = [];
     this.supplyDrops = [];
     this.shockwaves = [];
+    this.teslaBolts = [];
+    this.droneBeams = [];
+    this.dashGhosts = [];
     this.supplyDropTimer = 14; // First crate arrives 14s in to assist early challenge!
     this.initBarrels();
 
@@ -286,6 +402,8 @@ export class GameEngine {
     this.updateZombies(delta);
     this.updateShooting(delta);
     this.updateBullets(delta);
+    this.updateAutoWeapons(delta);
+    this.updateVisualEffects(delta);
     this.updateCoins(delta);
     this.updateFloatingTexts(delta);
     this.updateParticles(delta);
@@ -311,44 +429,71 @@ export class GameEngine {
       this.player.rapidBoostTimer -= delta;
     }
 
+    // Dash cooldown countdown
+    if (this.player.dashCooldown > 0) {
+      this.player.dashCooldown = Math.max(0, this.player.dashCooldown - delta);
+    }
+
     // Notify HUD of active buffs
     this.broadcastActiveBuffs();
 
-    // 2. Player movement
+    // 2. Player movement (active dash vs normal move)
     let moveX = 0;
     let moveY = 0;
 
-    if (this.keys['w'] || this.keys['arrowup']) moveY -= 1;
-    if (this.keys['s'] || this.keys['arrowdown']) moveY += 1;
-    if (this.keys['a'] || this.keys['arrowleft']) moveX -= 1;
-    if (this.keys['d'] || this.keys['arrowright']) moveX += 1;
+    if (this.player.dashActive) {
+      // High-speed dodge roll thrust
+      this.player.x += this.player.dashVx;
+      this.player.y += this.player.dashVy;
 
-    if (this.virtualStick.active) {
-      moveX += this.virtualStick.dx;
-      moveY += this.virtualStick.dy;
-    }
+      // Spawn motion ghost afterimage
+      const clsConfig = HERO_CLASSES[this.player.heroClass] || HERO_CLASSES['commando'];
+      this.dashGhosts.push({
+        x: this.player.x,
+        y: this.player.y,
+        angle: this.player.angle,
+        color: clsConfig.accentColor,
+        alpha: 0.65,
+        radius: this.player.radius
+      });
 
-    const currentSpeed = this.player.speed * speedMultiplier;
-    const len = Math.hypot(moveX, moveY);
-    if (len > 0) {
-      moveX /= len;
-      moveY /= len;
-      this.player.x += moveX * currentSpeed;
-      this.player.y += moveY * currentSpeed;
+      this.player.dashTimer -= delta;
+      if (this.player.dashTimer <= 0) {
+        this.player.dashActive = false;
+      }
+    } else {
+      if (this.keys['w'] || this.keys['arrowup']) moveY -= 1;
+      if (this.keys['s'] || this.keys['arrowdown']) moveY += 1;
+      if (this.keys['a'] || this.keys['arrowleft']) moveX -= 1;
+      if (this.keys['d'] || this.keys['arrowright']) moveX += 1;
 
-      // Hyper speed trail particles
-      if (this.player.speedBoostTimer > 0 && Math.random() < 0.4) {
-        this.particles.push({
-          x: this.player.x - moveX * 12,
-          y: this.player.y - moveY * 12,
-          vx: -moveX * 0.5,
-          vy: -moveY * 0.5,
-          radius: 3,
-          color: '#06b6d4',
-          alpha: 0.8,
-          life: 0,
-          maxLife: 0.25
-        });
+      if (this.virtualStick.active) {
+        moveX += this.virtualStick.dx;
+        moveY += this.virtualStick.dy;
+      }
+
+      const currentSpeed = this.player.speed * speedMultiplier;
+      const len = Math.hypot(moveX, moveY);
+      if (len > 0) {
+        moveX /= len;
+        moveY /= len;
+        this.player.x += moveX * currentSpeed;
+        this.player.y += moveY * currentSpeed;
+
+        // Hyper speed trail particles
+        if (this.player.speedBoostTimer > 0 && Math.random() < 0.4) {
+          this.particles.push({
+            x: this.player.x - moveX * 12,
+            y: this.player.y - moveY * 12,
+            vx: -moveX * 0.5,
+            vy: -moveY * 0.5,
+            radius: 3,
+            color: '#06b6d4',
+            alpha: 0.8,
+            life: 0,
+            maxLife: 0.25
+          });
+        }
       }
     }
 
@@ -384,7 +529,7 @@ export class GameEngine {
       this.player.angle = Math.atan2(nearest.y - this.player.y, nearest.x - this.player.x);
     } else if (this.mouseMoved) {
       this.player.angle = Math.atan2(this.mouseY - this.player.y, this.mouseX - this.player.x);
-    } else if (len > 0) {
+    } else if (Math.hypot(moveX, moveY) > 0) {
       this.player.angle = Math.atan2(moveY, moveX);
     }
   }
@@ -692,6 +837,171 @@ export class GameEngine {
       }
 
       if (bulletRemoved) continue;
+    }
+  }
+
+  public findClosestZombieToPoint(x: number, y: number, maxDist = Infinity): Zombie | null {
+    let bestDist = maxDist;
+    let target: Zombie | null = null;
+    for (const z of this.zombies) {
+      if (z.hp <= 0) continue;
+      const dist = Math.hypot(z.x - x, z.y - y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        target = z;
+      }
+    }
+    return target;
+  }
+
+  private updateAutoWeapons(delta: number) {
+    // 1. Auto-Weapon 1: Orbiting Energy Blades (Plasma Saw)
+    if (this.player.orbitingBladesCount > 0) {
+      this.player.orbitingBladesAngle += delta * 4.2;
+      const bladeCount = this.player.orbitingBladesCount;
+      const bladeRadius = this.player.orbitingBladesRadius;
+      const now = performance.now();
+
+      for (let i = 0; i < bladeCount; i++) {
+        const angle = this.player.orbitingBladesAngle + (i * (Math.PI * 2 / bladeCount));
+        const bx = this.player.x + Math.cos(angle) * bladeRadius;
+        const by = this.player.y + Math.sin(angle) * bladeRadius;
+
+        for (const zombie of this.zombies) {
+          if (zombie.hp <= 0) continue;
+          const dist = Math.hypot(bx - zombie.x, by - zombie.y);
+          if (dist <= zombie.radius + 16) {
+            const zCustom = zombie as unknown as { _bladeHitTime?: number };
+            if (!zCustom._bladeHitTime || now - zCustom._bladeHitTime > 260) {
+              zCustom._bladeHitTime = now;
+              sounds.playBladeSlice();
+              const kx = (zombie.x - bx) / (dist || 1);
+              const ky = (zombie.y - by) / (dist || 1);
+              this.damageZombie(zombie, this.player.orbitingBladesDamage, kx * 5, ky * 5);
+              this.spawnHitParticles(bx, by, '#38bdf8', 5);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Auto-Weapon 2: Support Combat Drone
+    if (this.player.droneActive) {
+      this.player.droneAngle += delta * 1.8;
+      this.player.droneFireCooldown -= delta;
+
+      if (this.player.droneFireCooldown <= 0) {
+        const droneTarget = this.findClosestZombieToPoint(this.player.x, this.player.y, 440);
+        if (droneTarget) {
+          const droneX = this.player.x + Math.cos(this.player.droneAngle) * 44;
+          const droneY = this.player.y + Math.sin(this.player.droneAngle) * 32;
+
+          this.droneBeams.push({
+            startX: droneX,
+            startY: droneY,
+            endX: droneTarget.x,
+            endY: droneTarget.y,
+            life: 0.12,
+            maxLife: 0.12
+          });
+
+          const damage = 24 * this.player.droneLevel;
+          sounds.playDroneLaser();
+          const dist = Math.hypot(droneTarget.x - droneX, droneTarget.y - droneY);
+          const kx = (droneTarget.x - droneX) / (dist || 1);
+          const ky = (droneTarget.y - droneY) / (dist || 1);
+          this.damageZombie(droneTarget, damage, kx * 4, ky * 4);
+          this.spawnHitParticles(droneTarget.x, droneTarget.y, '#22d3ee', 6);
+
+          this.player.droneFireCooldown = Math.max(0.42, 0.95 - this.player.droneLevel * 0.16);
+        }
+      }
+    }
+
+    // 3. Auto-Weapon 3: Tesla Chain-Lightning
+    if (this.player.teslaActive) {
+      this.player.teslaCooldown -= delta;
+
+      if (this.player.teslaCooldown <= 0) {
+        const firstTarget = this.findClosestZombieToPoint(this.player.x, this.player.y, 360);
+        if (firstTarget) {
+          const chainCount = 2 + this.player.teslaLevel;
+          const hitZombies: Zombie[] = [firstTarget];
+          let currentTarget = firstTarget;
+
+          this.teslaBolts.push({
+            startX: this.player.x,
+            startY: this.player.y,
+            endX: firstTarget.x,
+            endY: firstTarget.y,
+            life: 0.22,
+            maxLife: 0.22
+          });
+
+          for (let step = 1; step < chainCount; step++) {
+            let nextTarget: Zombie | null = null;
+            let bestDist = 240;
+
+            for (const cand of this.zombies) {
+              if (hitZombies.includes(cand) || cand.hp <= 0) continue;
+              const d = Math.hypot(currentTarget.x - cand.x, currentTarget.y - cand.y);
+              if (d < bestDist) {
+                bestDist = d;
+                nextTarget = cand;
+              }
+            }
+
+            if (!nextTarget) break;
+            hitZombies.push(nextTarget);
+
+            this.teslaBolts.push({
+              startX: currentTarget.x,
+              startY: currentTarget.y,
+              endX: nextTarget.x,
+              endY: nextTarget.y,
+              life: 0.22,
+              maxLife: 0.22
+            });
+
+            currentTarget = nextTarget;
+          }
+
+          sounds.playTesla();
+          const shockDmg = 30 + this.player.teslaLevel * 14;
+          for (const victim of hitZombies) {
+            this.damageZombie(victim, shockDmg, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
+            this.spawnHitParticles(victim.x, victim.y, '#c084fc', 6);
+          }
+
+          this.player.teslaCooldown = 2.4;
+        }
+      }
+    }
+  }
+
+  private updateVisualEffects(delta: number) {
+    // 1. Drone Laser Beams life
+    for (let i = this.droneBeams.length - 1; i >= 0; i--) {
+      this.droneBeams[i].life -= delta;
+      if (this.droneBeams[i].life <= 0) {
+        this.droneBeams.splice(i, 1);
+      }
+    }
+
+    // 2. Tesla Bolts life
+    for (let i = this.teslaBolts.length - 1; i >= 0; i--) {
+      this.teslaBolts[i].life -= delta;
+      if (this.teslaBolts[i].life <= 0) {
+        this.teslaBolts.splice(i, 1);
+      }
+    }
+
+    // 3. Dash Ghost Afterimages alpha decay
+    for (let i = this.dashGhosts.length - 1; i >= 0; i--) {
+      this.dashGhosts[i].alpha -= delta * 3.6;
+      if (this.dashGhosts[i].alpha <= 0) {
+        this.dashGhosts.splice(i, 1);
+      }
     }
   }
 
@@ -1404,6 +1714,12 @@ export class GameEngine {
     // 8. Draw Bullets
     this.renderBullets(ctx);
 
+    // 8.5 Draw Laser Beams & Tesla Lightning
+    this.renderLaserAndLightning(ctx);
+
+    // 8.8 Draw Dash Ghosts
+    this.renderDashGhosts(ctx);
+
     // 9. Draw Player
     this.renderPlayer(ctx);
 
@@ -1666,12 +1982,107 @@ export class GameEngine {
     }
   }
 
+  private renderLaserAndLightning(ctx: CanvasRenderingContext2D) {
+    // 1. Drone Laser Beams
+    for (const b of this.droneBeams) {
+      ctx.save();
+      const progress = b.life / b.maxLife;
+      ctx.globalAlpha = Math.max(0, progress);
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 10;
+
+      ctx.beginPath();
+      ctx.moveTo(b.startX, b.startY);
+      ctx.lineTo(b.endX, b.endY);
+      ctx.stroke();
+
+      // White hot core
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(b.startX, b.startY);
+      ctx.lineTo(b.endX, b.endY);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // 2. Tesla Lightning Bolts (jagged procedural arcs)
+    for (const bolt of this.teslaBolts) {
+      ctx.save();
+      const progress = bolt.life / bolt.maxLife;
+      ctx.globalAlpha = Math.max(0, progress);
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = '#a855f7';
+      ctx.shadowBlur = 14;
+
+      const segments = 4;
+      ctx.beginPath();
+      ctx.moveTo(bolt.startX, bolt.startY);
+      for (let s = 1; s < segments; s++) {
+        const ratio = s / segments;
+        const midX = bolt.startX + (bolt.endX - bolt.startX) * ratio;
+        const midY = bolt.startY + (bolt.endY - bolt.startY) * ratio;
+        // Perpendicular displacement jitter
+        const jitter = (Math.random() - 0.5) * 20;
+        const perpX = -(bolt.endY - bolt.startY);
+        const perpY = bolt.endX - bolt.startX;
+        const perpLen = Math.hypot(perpX, perpY);
+        const normPerpX = perpLen > 0 ? perpX / perpLen : 0;
+        const normPerpY = perpLen > 0 ? perpY / perpLen : 0;
+        ctx.lineTo(midX + normPerpX * jitter, midY + normPerpY * jitter);
+      }
+      ctx.lineTo(bolt.endX, bolt.endY);
+      ctx.stroke();
+
+      // Core electric white highlight
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+
+  private renderDashGhosts(ctx: CanvasRenderingContext2D) {
+    for (const g of this.dashGhosts) {
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.rotate(g.angle);
+      ctx.globalAlpha = Math.max(0, g.alpha * 0.45);
+      ctx.fillStyle = g.color;
+      ctx.shadowColor = g.color;
+      ctx.shadowBlur = 12;
+
+      ctx.beginPath();
+      ctx.arc(0, 0, g.radius * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
   private renderPlayer(ctx: CanvasRenderingContext2D) {
     const p = this.player;
+    const cls = HERO_CLASSES[p.heroClass] || HERO_CLASSES['commando'];
+
+    // 1. Orbiting Blades around player (in world coordinates)
+    if (p.orbitingBladesCount > 0) {
+      this.renderOrbitingBlades(ctx, p);
+    }
+
+    // 2. Support Combat Drone (in world coordinates)
+    if (p.droneActive) {
+      this.renderSupportDrone(ctx, p);
+    }
+
     ctx.save();
     ctx.translate(p.x, p.y);
 
-    // If invincibility active, pulse alpha
+    // If invincibility active (or dashing), pulse alpha
     if (p.invincibleTimer > 0) {
       ctx.globalAlpha = Math.sin(Date.now() * 0.03) > 0 ? 0.35 : 0.9;
     }
@@ -1694,23 +2105,126 @@ export class GameEngine {
     // Gun Barrel line indicating direction
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(0, -4, p.radius + 12, 8);
-    ctx.strokeStyle = '#64748b';
+    ctx.strokeStyle = cls.accentColor;
     ctx.lineWidth = 1.5;
     ctx.strokeRect(0, -4, p.radius + 12, 8);
 
-    // Player Body: Blue circle
-    ctx.fillStyle = '#2563eb';
-    ctx.strokeStyle = '#60a5fa';
+    // Player Body: class-colored circle with crisp border
+    ctx.fillStyle = cls.color;
+    ctx.strokeStyle = cls.accentColor;
     ctx.lineWidth = 3;
+    ctx.shadowColor = cls.glowColor;
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Cute survivor visor / headband
-    ctx.fillStyle = '#93c5fd';
+    // Survivor visor / headband
+    ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(p.radius * 0.25, 0, p.radius * 0.45, -Math.PI / 2, Math.PI / 2);
+    ctx.arc(p.radius * 0.25, 0, p.radius * 0.42, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+
+    // Small class badge / crest in center
+    ctx.fillStyle = cls.accentColor;
+    ctx.beginPath();
+    ctx.arc(-p.radius * 0.2, 0, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  private renderOrbitingBlades(ctx: CanvasRenderingContext2D, p: Player) {
+    const count = p.orbitingBladesCount;
+    const rad = p.orbitingBladesRadius;
+
+    // Draw faint orbital ring track
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    for (let i = 0; i < count; i++) {
+      const angle = p.orbitingBladesAngle + (i * ((Math.PI * 2) / count));
+      const bx = p.x + Math.cos(angle) * rad;
+      const by = p.y + Math.sin(angle) * rad;
+
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(angle * 3.5); // Spin blade rapidly
+
+      // Blade outer glow
+      ctx.shadowColor = '#06b6d4';
+      ctx.shadowBlur = 10;
+
+      // Saw blade disc (6 teeth)
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath();
+      const bladeSize = 12;
+      const teeth = 6;
+      for (let t = 0; t < teeth * 2; t++) {
+        const r = t % 2 === 0 ? bladeSize : bladeSize * 0.55;
+        const theta = (t * Math.PI) / teeth;
+        const tx = Math.cos(theta) * r;
+        const ty = Math.sin(theta) * r;
+        if (t === 0) ctx.moveTo(tx, ty);
+        else ctx.lineTo(tx, ty);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      // Blade center rivet
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  private renderSupportDrone(ctx: CanvasRenderingContext2D, p: Player) {
+    const droneX = p.x + Math.cos(p.droneAngle) * 44;
+    const droneY = p.y + Math.sin(p.droneAngle) * 32 + Math.sin(Date.now() * 0.006) * 4;
+
+    ctx.save();
+    ctx.translate(droneX, droneY);
+
+    // Drone orientation: face nearest zombie or facing player angle
+    const target = this.findClosestZombieToPoint(p.x, p.y, 420);
+    const droneAim = target ? Math.atan2(target.y - droneY, target.x - droneX) : p.angle;
+    ctx.rotate(droneAim);
+
+    // Thruster trail
+    ctx.fillStyle = '#38bdf8';
+    ctx.shadowColor = '#0284c7';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(-11, 0, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mini drone fuselage
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Glowing cyan optic eye / gun
+    ctx.fillStyle = '#22d3ee';
+    ctx.shadowColor = '#22d3ee';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(4, 0, 2.8, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();

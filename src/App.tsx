@@ -4,7 +4,9 @@ import { GameHUD } from './components/GameHUD';
 import { MiniMap } from './components/MiniMap';
 import { UpgradeModal } from './components/UpgradeModal';
 import { GameOverModal } from './components/GameOverModal';
+import { ClassSelector } from './components/ClassSelector';
 import { UpgradeOption, GameState } from './game/types';
+import { HeroClassId } from './game/classes';
 import { getRandomUpgrades, applyUpgradeToPlayer } from './game/upgrades';
 import { sounds } from './game/audio';
 import { Play, RotateCcw, Shield, Download, Swords, Info } from 'lucide-react';
@@ -16,6 +18,7 @@ export default function App() {
 
   // React State for HUD & UI
   const [gameState, setGameState] = useState<GameState>('START');
+  const [selectedHeroClass, setSelectedHeroClass] = useState<HeroClassId>('commando');
   const [hp, setHp] = useState(100);
   const [maxHp, setMaxHp] = useState(100);
   const [currentXp, setCurrentXp] = useState(0);
@@ -35,6 +38,13 @@ export default function App() {
   const [gameOverStats, setGameOverStats] = useState<GameOverStats | null>(null);
   const [shieldActive, setShieldActive] = useState(false);
   const [shieldCooldown, setShieldCooldown] = useState(0);
+  const [dashCooldown, setDashCooldown] = useState(0);
+  const [dashCooldownMax, setDashCooldownMax] = useState(2.5);
+  const [autoWeapons, setAutoWeapons] = useState({
+    orbitingBladesCount: 0,
+    droneActive: false,
+    teslaActive: false
+  });
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   // Initialize Game Engine
@@ -101,23 +111,37 @@ export default function App() {
     };
   }, []);
 
-  // Update shield status on tick
+  // Update shield and skill status on tick
   useEffect(() => {
     if (gameState !== 'PLAYING') return;
     const interval = setInterval(() => {
       if (engineRef.current) {
         setShieldActive(engineRef.current.player.shieldActive);
         setShieldCooldown(engineRef.current.player.shieldCooldown);
+        setDashCooldown(engineRef.current.player.dashCooldown);
+        setDashCooldownMax(engineRef.current.player.dashCooldownMax);
+        setAutoWeapons({
+          orbitingBladesCount: engineRef.current.player.orbitingBladesCount,
+          droneActive: engineRef.current.player.droneActive,
+          teslaActive: engineRef.current.player.teslaActive
+        });
       }
-    }, 200);
+    }, 150);
     return () => clearInterval(interval);
   }, [gameState]);
 
-  const handleStartGame = useCallback(() => {
+  const handleStartGame = useCallback((heroCls?: HeroClassId) => {
     if (!engineRef.current) return;
-    engineRef.current.startGame();
+    const cls = heroCls || selectedHeroClass;
+    engineRef.current.startGame(cls);
     setGameState('PLAYING');
     setGameOverStats(null);
+  }, [selectedHeroClass]);
+
+  const handleDash = useCallback(() => {
+    if (engineRef.current) {
+      engineRef.current.triggerDash();
+    }
   }, []);
 
   const handleSelectUpgrade = useCallback((option: UpgradeOption) => {
@@ -178,6 +202,11 @@ export default function App() {
               onToggleMute={handleToggleMute}
               shieldActive={shieldActive}
               shieldCooldown={shieldCooldown}
+              dashCooldown={dashCooldown}
+              dashCooldownMax={dashCooldownMax}
+              onDash={handleDash}
+              heroClass={selectedHeroClass}
+              autoWeapons={autoWeapons}
             />
             {/* Tactical Mini-Map in bottom-left corner */}
             <MiniMap engine={engineRef.current} />
@@ -195,7 +224,11 @@ export default function App() {
 
         {/* Game Over Modal */}
         {gameState === 'GAMEOVER' && gameOverStats && (
-          <GameOverModal stats={gameOverStats} onRestart={handleStartGame} />
+          <GameOverModal
+            stats={gameOverStats}
+            onRestart={handleStartGame}
+            onChangeClass={() => setGameState('START')}
+          />
         )}
 
         {/* Pause Overlay Screen */}
@@ -215,7 +248,7 @@ export default function App() {
 
               <button
                 id="btn-restart-from-pause"
-                onClick={handleStartGame}
+                onClick={() => handleStartGame()}
                 className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" /> Restart Match
@@ -226,27 +259,38 @@ export default function App() {
 
         {/* Start Game Title Screen */}
         {gameState === 'START' && (
-          <div id="start-screen" className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-950/90 backdrop-blur-md p-4">
-            <div className="max-w-md w-full bg-neutral-900/95 border border-neutral-800 rounded-3xl p-6 sm:p-8 flex flex-col items-center text-center shadow-2xl">
+          <div id="start-screen" className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-950/92 backdrop-blur-md p-4 overflow-y-auto">
+            <div className="max-w-2xl w-full bg-neutral-900/95 border border-neutral-800 rounded-3xl p-5 sm:p-7 flex flex-col items-center text-center shadow-2xl my-auto">
               {/* Title Badge */}
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-red-600 to-amber-500 flex items-center justify-center text-white shadow-xl shadow-red-900/30 mb-4">
-                <Swords className="w-8 h-8" />
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-red-600 to-amber-500 flex items-center justify-center text-white shadow-xl shadow-red-900/30 mb-3">
+                <Swords className="w-7 h-7" />
               </div>
 
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">
-                ZOMBIE RUSH
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white mb-1">
+                ZOMBIE RUSH: SURVIVOR
               </h1>
-              <p className="text-xs sm:text-sm text-neutral-400 mb-6">
-                2D Top-Down Survivor Arena with automatic targeting, endless waves, and rogue-lite upgrades!
+              <p className="text-xs sm:text-sm text-neutral-400 max-w-lg mb-2">
+                2D Top-Down Survivor Arena. Choose your operative class, dodge-roll through hordes, and activate automated weapons!
               </p>
+
+              {/* Class Selection Component */}
+              <ClassSelector
+                selectedClass={selectedHeroClass}
+                onSelectClass={(id) => {
+                  setSelectedHeroClass(id);
+                  if (engineRef.current) {
+                    engineRef.current.setHeroClass(id);
+                  }
+                }}
+              />
 
               {/* Action Buttons */}
               <button
                 id="btn-start-game"
-                onClick={handleStartGame}
-                className="w-full py-4 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:brightness-110 active:scale-95 text-white font-black text-base uppercase tracking-wider transition-all duration-150 shadow-xl shadow-red-900/40 flex items-center justify-center gap-2 mb-3 cursor-pointer"
+                onClick={() => handleStartGame()}
+                className="w-full py-3.5 sm:py-4 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:brightness-110 active:scale-95 text-white font-black text-sm sm:text-base uppercase tracking-wider transition-all duration-150 shadow-xl shadow-red-900/40 flex items-center justify-center gap-2 mb-3 cursor-pointer"
               >
-                <Play className="w-5 h-5 fill-white" /> Start Survivor Run
+                <Play className="w-5 h-5 fill-white" /> Deploy Survivor Run
               </button>
 
               <div className="flex gap-2 w-full">
@@ -255,7 +299,7 @@ export default function App() {
                   onClick={() => setShowHowToPlay(!showHowToPlay)}
                   className="flex-1 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Info className="w-3.5 h-3.5" /> How To Play
+                  <Info className="w-3.5 h-3.5" /> How To Play & Controls
                 </button>
 
                 <button
@@ -272,41 +316,48 @@ export default function App() {
               {showHowToPlay && (
                 <div className="w-full mt-4 p-4 rounded-2xl bg-neutral-950 border border-neutral-800 text-left text-xs text-neutral-300 space-y-2 animate-in fade-in duration-150">
                   <div className="font-bold text-amber-400 text-xs uppercase tracking-wider mb-1">
-                    Battle Controls
+                    Battle Controls & Abilities
                   </div>
                   <div className="flex justify-between py-1 border-b border-neutral-900">
                     <span className="text-neutral-400">Move:</span>
                     <span className="font-mono text-white font-semibold">WASD / Arrow Keys</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-neutral-900">
+                    <span className="text-cyan-400 font-semibold">Dodge Roll (Dash):</span>
+                    <span className="font-mono text-cyan-200 font-bold">Spacebar / Right-Click (Invulnerable!)</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-neutral-900">
                     <span className="text-neutral-400">Shooting:</span>
-                    <span className="font-semibold text-emerald-400">Auto-aims nearest zombie</span>
+                    <span className="font-semibold text-emerald-400">Auto-aims nearest zombie automatically</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-neutral-900">
-                    <span className="text-neutral-400">Progression:</span>
-                    <span>EXP scales with higher waves + Rogue-lite cards</span>
+                    <span className="text-purple-400 font-semibold">Auto-Weapons:</span>
+                    <span className="text-purple-200">Orbiting Plasma Blades, Combat Laser Drone & Tesla Lightning</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-neutral-900">
-                    <span className="text-cyan-400 font-semibold">Supply Drops:</span>
-                    <span className="text-cyan-200">Parachutes with Titan Dmg, Vortex Magnet & Nukes</span>
+                    <span className="text-amber-400 font-semibold">Progression:</span>
+                    <span>XP Orbs scale with waves + Rogue-lite Level Up cards</span>
                   </div>
                   <div className="flex justify-between py-1">
-                    <span className="text-purple-400 font-semibold">Boss Battles:</span>
-                    <span className="text-rose-300">Pre-attack dialogues, charging & shockwaves</span>
+                    <span className="text-rose-400 font-semibold">Boss Battles:</span>
+                    <span className="text-rose-300">Telegraphed bull charges & shockwaves every 5 waves</span>
                   </div>
                 </div>
               )}
 
               {/* Quick control chips */}
               {!showHowToPlay && (
-                <div className="mt-6 flex items-center justify-center gap-4 text-[11px] text-neutral-400">
-                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60">
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-[11px] text-neutral-400">
+                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60 font-mono">
                     [WASD] Move
                   </span>
-                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60">
+                  <span className="px-2 py-1 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-mono font-bold">
+                    [SPACE / R-CLICK] Dodge Roll
+                  </span>
+                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60 font-mono">
                     [AUTO] Aim & Shoot
                   </span>
-                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60">
+                  <span className="px-2 py-1 rounded bg-neutral-800/80 border border-neutral-700/60 font-mono">
                     [P] Pause
                   </span>
                 </div>

@@ -80,6 +80,38 @@ export const ALL_UPGRADES: UpgradeOption[] = [
     category: 'offense',
     icon: 'Wind',
     tier: 'common'
+  },
+  {
+    id: 'orbit_blade',
+    title: 'Plasma Orbit Saw',
+    description: 'Deploys a high-speed rotating energy blade that shreds nearby zombies on contact.',
+    category: 'offense',
+    icon: 'Disc',
+    tier: 'rare'
+  },
+  {
+    id: 'combat_drone',
+    title: 'Support Combat Drone',
+    description: 'Deploys an autonomous hover drone that continuously snipes hostiles with targeted laser bolts.',
+    category: 'utility',
+    icon: 'Bot',
+    tier: 'epic'
+  },
+  {
+    id: 'tesla_lightning',
+    title: 'Tesla Chain-Lightning',
+    description: 'Periodically releases high-voltage electric shocks that chain through up to 4 nearby zombies.',
+    category: 'offense',
+    icon: 'Zap',
+    tier: 'rare'
+  },
+  {
+    id: 'phase_dash',
+    title: 'Phase Thrusters',
+    description: '-35% Dash Cooldown and extended invulnerability frames during dodge rolls.',
+    category: 'utility',
+    icon: 'Sparkles',
+    tier: 'common'
   }
 ];
 
@@ -122,6 +154,21 @@ export function applyUpgradeToPlayer(player: Player, upgradeId: string) {
       break;
     case 'bullet_speed':
       player.bulletSpeed *= 1.35;
+      break;
+    case 'orbit_blade':
+      player.orbitingBladesCount = Math.min(4, player.orbitingBladesCount + 1);
+      player.orbitingBladesDamage = Math.round(player.orbitingBladesDamage * 1.25);
+      break;
+    case 'combat_drone':
+      player.droneActive = true;
+      player.droneLevel = Math.min(3, player.droneLevel + 1);
+      break;
+    case 'tesla_lightning':
+      player.teslaActive = true;
+      player.teslaLevel = Math.min(3, player.teslaLevel + 1);
+      break;
+    case 'phase_dash':
+      player.dashCooldownMax = Math.max(0.8, player.dashCooldownMax * 0.65);
       break;
   }
 }

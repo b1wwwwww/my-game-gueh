@@ -1,6 +1,7 @@
 import React from 'react';
-import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward } from 'lucide-react';
 import { SupplyDropType } from '../game/types';
+import { HeroClassId, HERO_CLASSES } from '../game/classes';
 
 interface BuffInfo {
   type: SupplyDropType;
@@ -30,6 +31,15 @@ interface GameHUDProps {
   onToggleMute: () => void;
   shieldActive: boolean;
   shieldCooldown: number;
+  dashCooldown?: number;
+  dashCooldownMax?: number;
+  onDash?: () => void;
+  heroClass?: HeroClassId;
+  autoWeapons?: {
+    orbitingBladesCount: number;
+    droneActive: boolean;
+    teslaActive: boolean;
+  };
 }
 
 export const GameHUD: React.FC<GameHUDProps> = ({
@@ -52,10 +62,18 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onTogglePause,
   onToggleMute,
   shieldActive,
-  shieldCooldown
+  shieldCooldown,
+  dashCooldown = 0,
+  dashCooldownMax = 2.5,
+  onDash,
+  heroClass = 'commando',
+  autoWeapons = { orbitingBladesCount: 0, droneActive: false, teslaActive: false }
 }) => {
   const xpPercent = Math.min(100, Math.max(0, (currentXp / maxXp) * 100));
   const hpPercent = Math.min(100, Math.max(0, (hp / maxHp) * 100));
+  const heroConfig = HERO_CLASSES[heroClass] || HERO_CLASSES['commando'];
+  const isDashReady = dashCooldown <= 0;
+  const dashCooldownPct = dashCooldownMax > 0 ? Math.min(1, dashCooldown / dashCooldownMax) : 0;
 
   const getBuffIcon = (type: SupplyDropType) => {
     switch (type) {
@@ -140,17 +158,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         )}
       </div>
 
-      {/* Main HUD Row (Player Stats Left, Wave Center, Actions Right) */}
-      <div className="flex items-end justify-between w-full pointer-events-auto">
-        {/* Left Side: Player HP & Shield */}
-        <div className="flex flex-col gap-2 bg-neutral-950/80 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-neutral-800 shadow-lg min-w-[180px] sm:min-w-[220px]">
+      {/* Main HUD Row (Player Stats Left, Dash & Wave Center, Actions Right) */}
+      <div className="flex items-end justify-between w-full pointer-events-auto gap-2">
+        {/* Left Side: Player HP, Hero Class & Weapons */}
+        <div className="flex flex-col gap-2 bg-neutral-950/85 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-neutral-800 shadow-lg min-w-[200px] sm:min-w-[240px]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {/* Cute Player Icon */}
-              <div className="w-6 h-6 rounded-full bg-blue-600 border-2 border-blue-400 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                P
+              {/* Hero Class Avatar Badge */}
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold text-white shadow-md border"
+                style={{ backgroundColor: heroConfig.color, borderColor: heroConfig.accentColor }}
+                title={`${heroConfig.name} - ${heroConfig.role}`}
+              >
+                <span>{heroConfig.badge}</span>
               </div>
-              <span className="text-xs font-bold text-neutral-300">HEALTH</span>
+              <div className="flex flex-col">
+                <span className="text-xs font-black text-white leading-tight">{heroConfig.name}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: heroConfig.accentColor }}>
+                  {heroConfig.role}
+                </span>
+              </div>
             </div>
             <span className="text-xs font-mono font-bold text-white">
               {Math.max(0, Math.ceil(hp))} / {maxHp}
@@ -171,32 +198,99 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             />
           </div>
 
-          {/* Shield Status if unlocked */}
-          {shieldActive && (
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-400">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>{shieldCooldown <= 0 ? 'Shield Ready' : `Recharging (${Math.ceil(shieldCooldown)}s)`}</span>
-            </div>
-          )}
-        </div>
+          {/* Status Chips: Shield & Auto-Weapons */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {shieldActive && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-950/80 border border-sky-500/50 text-[10px] font-semibold text-sky-400">
+                <ShieldCheck className="w-3 h-3" />
+                <span>{shieldCooldown <= 0 ? 'Shield Ready' : `${Math.ceil(shieldCooldown)}s`}</span>
+              </div>
+            )}
 
-        {/* Center: Wave Counter & Zombies Remaining */}
-        <div className="flex flex-col items-center bg-neutral-950/80 backdrop-blur-md px-5 py-3 rounded-2xl border border-neutral-800 shadow-lg">
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-amber-400">
-              WAVE {wave}
-            </span>
-            {isBoss && (
-              <span className="px-2 py-0.5 rounded bg-purple-900/80 border border-purple-500 text-[10px] font-bold text-purple-300 animate-pulse">
-                BOSS
-              </span>
+            {autoWeapons.orbitingBladesCount > 0 && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-500/50 text-[10px] font-bold text-cyan-300" title="Orbiting Plasma Blades">
+                <Disc className="w-3 h-3 animate-spin" />
+                <span>Saw x{autoWeapons.orbitingBladesCount}</span>
+              </div>
+            )}
+
+            {autoWeapons.droneActive && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-950/80 border border-indigo-500/50 text-[10px] font-bold text-indigo-300" title="Autonomous Combat Drone">
+                <Bot className="w-3 h-3" />
+                <span>Drone</span>
+              </div>
+            )}
+
+            {autoWeapons.teslaActive && (
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-950/80 border border-purple-500/50 text-[10px] font-bold text-purple-300" title="Tesla Chain Lightning">
+                <Zap className="w-3 h-3" />
+                <span>Tesla</span>
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-neutral-300 mt-1">
-            <Skull className="w-3.5 h-3.5 text-red-400" />
-            <span className="font-semibold">Zombies:</span>
-            <span className="font-mono text-white">{zombiesRemaining}</span>
-            <span className="text-neutral-500">/ {zombiesTotal}</span>
+        </div>
+
+        {/* Center: Interactive Dash Roll Skill Button & Wave Counter */}
+        <div className="flex flex-col items-center gap-2">
+          {/* Tactical Dash / Dodge Roll Button */}
+          <button
+            id="btn-trigger-dash"
+            onClick={onDash}
+            disabled={!isDashReady}
+            className={`group relative flex items-center gap-2 px-4 py-2 rounded-2xl border-2 transition-all cursor-pointer shadow-lg ${
+              isDashReady
+                ? 'bg-neutral-900/95 border-cyan-400 text-white shadow-[0_0_15px_rgba(34,211,238,0.4)] hover:scale-105 active:scale-95'
+                : 'bg-neutral-950/90 border-neutral-800 text-neutral-500 cursor-not-allowed'
+            }`}
+            title="Dodge Roll with Invulnerability Frames (Space / Right-Click)"
+          >
+            <div className={`p-1.5 rounded-xl ${isDashReady ? 'bg-cyan-500 text-neutral-950' : 'bg-neutral-800 text-neutral-500'}`}>
+              <FastForward className="w-4 h-4" />
+            </div>
+
+            <div className="flex flex-col text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-black tracking-wider uppercase">
+                  {isDashReady ? 'DODGE ROLL' : 'RECHARGING'}
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-300 font-bold border border-neutral-700">
+                  SPACE
+                </span>
+              </div>
+              <span className="text-[10px] text-neutral-400 font-medium">
+                {isDashReady ? 'Ready • Invincible Frames' : `${dashCooldown.toFixed(1)}s cooldown`}
+              </span>
+            </div>
+
+            {/* Cooldown progress bottom line */}
+            {!isDashReady && (
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-neutral-800 rounded-b-2xl overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500 transition-all duration-75"
+                  style={{ width: `${(1 - dashCooldownPct) * 100}%` }}
+                />
+              </div>
+            )}
+          </button>
+
+          {/* Wave Counter & Zombies Remaining */}
+          <div className="flex flex-col items-center bg-neutral-950/80 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-neutral-800 shadow-lg">
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-amber-400">
+                WAVE {wave}
+              </span>
+              {isBoss && (
+                <span className="px-2 py-0.5 rounded bg-purple-900/80 border border-purple-500 text-[10px] font-bold text-purple-300 animate-pulse">
+                  BOSS
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-neutral-300 mt-0.5">
+              <Skull className="w-3.5 h-3.5 text-red-400" />
+              <span className="font-semibold">Zombies:</span>
+              <span className="font-mono text-white">{zombiesRemaining}</span>
+              <span className="text-neutral-500">/ {zombiesTotal}</span>
+            </div>
           </div>
         </div>
 
