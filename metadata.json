@@ -1,0 +1,6 @@
+{
+  "name": "Zombie Rush: Top-Down Survivor",
+  "description": "A fast-paced 2D top-down survivor arena game featuring waves of zombies, boss encounters, auto-aim shooting, XP leveling, and randomized upgrades.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

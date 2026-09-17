@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    (function() {
+      try {
+        var _origFetch = typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : undefined;
+        var _fetch = _origFetch;
+
+        if (typeof window !== 'undefined') {
+          window.addEventListener('error', function(event) {
+            if (event && event.message && event.message.indexOf('fetch') !== -1 && event.message.indexOf('getter') !== -1) {
+              if (event.preventDefault) event.preventDefault();
+              if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+              return true;
+            }
+          }, true);
+
+          var _prevOnError = window.onerror;
+          window.onerror = function(msg) {
+            if (typeof msg === 'string' && msg.indexOf('fetch') !== -1 && msg.indexOf('getter') !== -1) {
+              return true;
+            }
+            if (_prevOnError) return _prevOnError.apply(this, arguments);
+          };
+        }
+
+        var defineFetch = function(obj) {
+          if (!obj) return;
+          try {
+            var desc = Object.getOwnPropertyDescriptor(obj, 'fetch');
+            if (!desc || desc.configurable || desc.set === undefined) {
+              Object.defineProperty(obj, 'fetch', {
+                get: function() { return _fetch; },
+                set: function(val) { _fetch = val; },
+                configurable: true,
+                enumerable: true
+              });
+            }
+          } catch (e) {}
+        };
+
+        defineFetch(window);
+        if (typeof Window !== 'undefined' && Window.prototype) defineFetch(Window.prototype);
+        var proto = typeof window !== 'undefined' ? Object.getPrototypeOf(window) : null;
+        while (proto) {
+          defineFetch(proto);
+          proto = Object.getPrototypeOf(proto);
+        }
+        if (typeof globalThis !== 'undefined') defineFetch(globalThis);
+      } catch (e) {}
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zombie Rush: Top-Down Survivor (Single File)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0a0a0a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #fff;
+    }
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair;
+    }
+    /* HUD Overlays */
+    .hud-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px;
+      z-index: 10;
+    }
+    /* Top XP/Coin Bar */
+    .top-bar-wrap {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .xp-panel {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(10, 10, 10, 0.85);
+      border: 1px solid #262626;
+      border-radius: 16px;
+      padding: 8px 16px;
+      width: 100%;
+      max-width: 580px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
+    }
+    .lvl-badge {
+      background: #083344;
+      border: 1px solid #06b6d4;
+      color: #22d3ee;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 10px;
+      white-space: nowrap;
+      letter-spacing: 0.5px;
+    }
+    .xp-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .xp-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 700;
+      color: #67e8f9;
+    }
+    .xp-track {
+      width: 100%;
+      height: 12px;
+      background: #171717;
+      border-radius: 100px;
+      overflow: hidden;
+      border: 1px solid #164e63;
+      padding: 1px;
+    }
+    .xp-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #06b6d4, #2dd4bf, #facc15);
+      border-radius: 100px;
+      transition: width 0.15s ease-out;
+      box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+    }
+    /* Boss Alert Banner */
+    .boss-alert {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: rgba(220, 38, 38, 0.95);
+      color: #fff;
+      font-weight: 900;
+      font-size: 14px;
+      padding: 8px 24px;
+      border-radius: 9999px;
+      border: 2px solid #f87171;
+      letter-spacing: 1px;
+      animation: alertPulse 0.8s infinite alternate;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+    }
+    @keyframes alertPulse {
+      from { transform: scale(0.97); }
+      to { transform: scale(1.03); }
+    }
+
+    /* Bottom HUD info */
+    .bottom-hud {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      width: 100%;
+      pointer-events: auto;
+    }
+    .player-card {
+      background: rgba(10, 10, 10, 0.85);
+      border: 1px solid #262626;
+      border-radius: 16px;
+      padding: 12px 16px;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      backdrop-filter: blur(8px);
+    }
+    .hp-text {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .hp-track {
+      width: 100%;
+      height: 12px;
+      background: #171717;
+      border-radius: 100px;
+      overflow: hidden;
+      border: 1px solid #404040;
+      padding: 1px;
+    }
+    .hp-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #10b981, #22c55e);
+      border-radius: 100px;
+      transition: width 0.15s ease-out;
+    }
+    .wave-badge {
+      background: rgba(10, 10, 10, 0.85);
+      border: 1px solid #262626;
+      border-radius: 16px;
+      padding: 10px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      backdrop-filter: blur(8px);
+    }
+    .wave-title {
+      font-size: 14px;
+      font-weight: 900;
+      color: #fbbf24;
+      letter-spacing: 1px;
+    }
+    .wave-zombies {
+      font-size: 12px;
+      color: #d4d4d4;
+    }
+    .controls-panel {
+      background: rgba(10, 10, 10, 0.85);
+      border: 1px solid #262626;
+      border-radius: 16px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      backdrop-filter: blur(8px);
+    }
+    .btn-icon {
+      background: #171717;
+      border: 1px solid #333;
+      color: #e5e5e5;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn-icon:hover {
+      background: #262626;
+      color: #fff;
+    }
+
+    /* Modal Windows */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 20px;
+    }
+    .modal-card {
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 24px;
+      padding: 32px;
+      max-width: 720px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+      animation: modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalPop {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .upgrade-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin: 24px 0 16px;
+    }
+    .upgrade-btn {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .upgrade-btn:hover {
+      transform: translateY(-4px);
+      border-color: #f59e0b;
+      background: #242424;
+      box-shadow: 0 10px 20px rgba(245, 158, 11, 0.15);
+    }
+    .up-tag {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: #064e3b;
+      color: #34d399;
+      border: 1px solid #059669;
+    }
+    .up-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .up-desc {
+      font-size: 12px;
+      color: #a3a3a3;
+      line-height: 1.4;
+      flex: 1;
+    }
+    .up-key {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #737373;
+      background: #121212;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+    .btn-action {
+      background: #dc2626;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 28px;
+      cursor: pointer;
+      transition: all 0.15s;
+      width: 100%;
+      letter-spacing: 0.5px;
+    }
+    .btn-action:hover {
+      background: #ef4444;
+      transform: scale(1.02);
+    }
+    .stats-table {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 20px 0;
+    }
+    .stat-box {
+      background: #0c0c0c;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #737373;
+      text-transform: uppercase;
+    }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 900;
+      color: #fbbf24;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- In-Game HUD -->
+    <div id="hud" class="hud-layer" style="display: none;">
+      <div class="top-bar-wrap">
+        <div class="xp-panel">
+          <div id="hudLevel" class="lvl-badge">LVL 1</div>
+          <div class="xp-info">
+            <div class="xp-header">
+              <span>COIN / XP PROGRESS</span>
+              <span id="hudXpText">0 / 8 (0%)</span>
+            </div>
+            <div class="xp-track">
+              <div id="hudXpFill" class="xp-fill"></div>
+            </div>
+          </div>
+        </div>
+        <div id="bossAlert" class="boss-alert">⚠️ WARNING: BOSS ZOMBIE INCOMING!</div>
+      </div>
+
+      <div class="bottom-hud">
+        <div class="player-card">
+          <div class="hp-text">
+            <span style="color: #93c5fd;">HEALTH</span>
+            <span id="hudHpText">100 / 100</span>
+          </div>
+          <div class="hp-track">
+            <div id="hudHpFill" class="hp-fill"></div>
+          </div>
+        </div>
+
+        <div class="wave-badge">
+          <div id="hudWaveTitle" class="wave-title">WAVE 1</div>
+          <div class="wave-zombies">Zombies: <strong id="hudZombiesRem" style="color: #fff;">15</strong> / <span id="hudZombiesTotal">15</span></div>
+        </div>
+
+        <div class="controls-panel">
+          <div style="font-size: 12px;">Score: <strong id="hudScore" style="color: #fbbf24;">0</strong></div>
+          <button id="btnSound" class="btn-icon">🔊 Sound</button>
+          <button id="btnPause" class="btn-icon">⏸ Pause</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Screen Overlay -->
+    <div id="startScreen" class="modal-overlay">
+      <div class="modal-card" style="max-width: 440px;">
+        <h1 style="font-size: 36px; font-weight: 900; margin-bottom: 8px; color: #ef4444;">ZOMBIE RUSH</h1>
+        <p style="font-size: 13px; color: #a3a3a3; margin-bottom: 24px;">2D Top-Down Survivor Arena with automatic targeting & wave survival</p>
+        <button id="btnStart" class="btn-action" style="margin-bottom: 16px;">START SURVIVOR RUN</button>
+        <div style="background: #0a0a0a; border: 1px solid #222; border-radius: 12px; padding: 12px; font-size: 12px; color: #888; text-align: left; line-height: 1.6;">
+          <div><strong style="color: #fff;">WASD / Arrows:</strong> Move survivor</div>
+          <div><strong style="color: #fff;">Auto-aim:</strong> Automatically shoots nearest zombie</div>
+          <div><strong style="color: #fff;">Coins:</strong> Fill XP bar to unlock 3 random upgrades</div>
+          <div><strong style="color: #fff;">Wave 5:</strong> Giant Boss Zombie encounter</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upgrade Modal Overlay -->
+    <div id="upgradeModal" class="modal-overlay" style="display: none;">
+      <div class="modal-card">
+        <div style="font-size: 12px; font-weight: 800; color: #fbbf24; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Level Achieved</div>
+        <h2 style="font-size: 28px; font-weight: 900; margin-bottom: 6px;">SELECT AN UPGRADE</h2>
+        <p style="font-size: 13px; color: #888;">Select an upgrade to strengthen your survivor</p>
+        <div id="upgradeGrid" class="upgrade-grid"></div>
+        <div style="font-size: 11px; color: #666;">Press [1], [2], or [3] on keyboard to quick-select</div>
+      </div>
+    </div>
+
+    <!-- Game Over Modal Overlay -->
+    <div id="gameOverModal" class="modal-overlay" style="display: none;">
+      <div class="modal-card" style="max-width: 440px;">
+        <div style="font-size: 44px; margin-bottom: 6px;">💀</div>
+        <h2 style="font-size: 28px; font-weight: 900; color: #ef4444; margin-bottom: 4px;">SURVIVOR FALLEN</h2>
+        <p style="font-size: 12px; color: #888;">You were overrun by the relentless horde</p>
+        <div class="stats-table">
+          <div class="stat-box">
+            <div class="stat-label">Final Score</div>
+            <div id="statFinalScore" class="stat-val">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Wave Reached</div>
+            <div id="statFinalWave" class="stat-val">1</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Zombies Slain</div>
+            <div id="statFinalKills" class="stat-val">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Level Reached</div>
+            <div id="statFinalLevel" class="stat-val">1</div>
+          </div>
+        </div>
+        <button id="btnRestart" class="btn-action">PLAY AGAIN</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Procedural Web Audio API Sound Synthesizer ---
+    const Sound = {
+      ctx: null,
+      muted: false,
+      init() {
+        if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      },
+      shoot() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(750, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.08);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      },
+      hit() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.06);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.06);
+      },
+      coin() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(980, now);
+        osc.frequency.setValueAtTime(1320, now + 0.05);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      },
+      levelUp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const t = now + i * 0.08;
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.15, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.2);
+        });
+      },
+      boss() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.linearRampToValueAtTime(440, now + 0.3);
+        osc.frequency.linearRampToValueAtTime(220, now + 0.6);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.7);
+      }
+    };
+
+    // --- Upgrades List ---
+    const UPGRADES = [
+      { id: 'fire_rate', title: 'Rapid Trigger', desc: '+25% Fire Rate to overwhelm the horde.', apply: p => p.fireRate *= 1.25 },
+      { id: 'bullet_damage', title: 'Heavy Caliber', desc: '+35% Bullet Damage against tough flesh.', apply: p => p.bulletDamage = Math.round(p.bulletDamage * 1.35) },
+      { id: 'pierce', title: 'Piercing Rounds', desc: '+1 Bullet Pierce through zombies.', apply: p => p.pierce += 1 },
+      { id: 'multishot', title: 'Twin Barrel', desc: '+1 Projectile per shot in a spread.', apply: p => { p.bulletCount += 1; p.bulletSpread = 0.2; } },
+      { id: 'speed', title: 'Sprint Boost', desc: '+20% Movement Speed.', apply: p => p.speed *= 1.2 },
+      { id: 'max_hp', title: 'Vitality Surge', desc: '+30 Max HP & instant heal +50 HP.', apply: p => { p.maxHp += 30; p.hp = Math.min(p.maxHp, p.hp + 50); } },
+      { id: 'magnet', title: 'Coin Magnet', desc: '+60% Coin Pickup Magnet Radius.', apply: p => p.magnetRange *= 1.6 },
+      { id: 'bullet_speed', title: 'Velocity Barrel', desc: '+40% Bullet Speed and knockback.', apply: p => p.bulletSpeed *= 1.4 }
+    ];
+
+    // --- Game Engine Variables ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let W = canvas.width = window.innerWidth;
+    let H = canvas.height = window.innerHeight;
+
+    window.addEventListener('resize', () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    });
+
+    const ARENA_W = 1600;
+    const ARENA_H = 1200;
+    let cameraX = 0;
+    let cameraY = 0;
+
+    let gameState = 'START'; // START, PLAYING, UPGRADE, PAUSED, GAMEOVER
+    let keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key.toLowerCase() === 'p' || e.key === 'Escape') togglePause();
+      if (gameState === 'UPGRADE') {
+        if (e.key === '1' && currentChoices[0]) selectUpgrade(currentChoices[0]);
+        if (e.key === '2' && currentChoices[1]) selectUpgrade(currentChoices[1]);
+        if (e.key === '3' && currentChoices[2]) selectUpgrade(currentChoices[2]);
+      }
+    });
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    // Entities
+    let player = {
+      x: ARENA_W / 2,
+      y: ARENA_H / 2,
+      radius: 18,
+      speed: 4.2,
+      hp: 100,
+      maxHp: 100,
+      angle: 0,
+      fireCooldown: 0,
+      fireRate: 3.2,
+      bulletDamage: 22,
+      bulletSpeed: 10.5,
+      pierce: 1,
+      bulletCount: 1,
+      bulletSpread: 0.15,
+      magnetRange: 130,
+      invincibleTimer: 0
+    };
+
+    let zombies = [];
+    let bullets = [];
+    let coins = [];
+    let floatingTexts = [];
+    let particles = [];
+    let bloodSplats = [];
+    let nextId = 1;
+
+    // Progression & Waves
+    let wave = 1;
+    let zombiesSpawned = 0;
+    let zombiesTotal = 15;
+    let zombiesKilled = 0;
+    let spawnTimer = 0;
+    let spawnInterval = 1.0;
+    let isBossWave = false;
+
+    let xp = 0;
+    let maxXp = 8;
+    let level = 1;
+    let score = 0;
+    let kills = 0;
+    let currentChoices = [];
+
+    // --- UI Elements ---
+    const hud = document.getElementById('hud');
+    const startScreen = document.getElementById('startScreen');
+    const upgradeModal = document.getElementById('upgradeModal');
+    const gameOverModal = document.getElementById('gameOverModal');
+    const bossAlert = document.getElementById('bossAlert');
+
+    const hudLevel = document.getElementById('hudLevel');
+    const hudXpText = document.getElementById('hudXpText');
+    const hudXpFill = document.getElementById('hudXpFill');
+    const hudHpText = document.getElementById('hudHpText');
+    const hudHpFill = document.getElementById('hudHpFill');
+    const hudWaveTitle = document.getElementById('hudWaveTitle');
+    const hudZombiesRem = document.getElementById('hudZombiesRem');
+    const hudZombiesTotal = document.getElementById('hudZombiesTotal');
+    const hudScore = document.getElementById('hudScore');
+
+    document.getElementById('btnStart').onclick = startGame;
+    document.getElementById('btnRestart').onclick = startGame;
+    document.getElementById('btnSound').onclick = () => {
+      Sound.muted = !Sound.muted;
+      document.getElementById('btnSound').innerText = Sound.muted ? '🔇 Muted' : '🔊 Sound';
+    };
+    document.getElementById('btnPause').onclick = togglePause;
+
+    function togglePause() {
+      if (gameState === 'PLAYING') {
+        gameState = 'PAUSED';
+        document.getElementById('btnPause').innerText = '▶ Resume';
+      } else if (gameState === 'PAUSED') {
+        gameState = 'PLAYING';
+        document.getElementById('btnPause').innerText = '⏸ Pause';
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    function startGame() {
+      player = {
+        x: ARENA_W / 2,
+        y: ARENA_H / 2,
+        radius: 18,
+        speed: 4.2,
+        hp: 100,
+        maxHp: 100,
+        angle: 0,
+        fireCooldown: 0,
+        fireRate: 3.2,
+        bulletDamage: 22,
+        bulletSpeed: 10.5,
+        pierce: 1,
+        bulletCount: 1,
+        bulletSpread: 0.15,
+        magnetRange: 130,
+        invincibleTimer: 0
+      };
+
+      zombies = [];
+      bullets = [];
+      coins = [];
+      floatingTexts = [];
+      particles = [];
+      bloodSplats = [];
+
+      wave = 1;
+      xp = 0;
+      maxXp = 8;
+      level = 1;
+      score = 0;
+      kills = 0;
+
+      startScreen.style.display = 'none';
+      gameOverModal.style.display = 'none';
+      upgradeModal.style.display = 'none';
+      hud.style.display = 'flex';
+
+      initWave(1);
+      gameState = 'PLAYING';
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function initWave(w) {
+      wave = w;
+      isBossWave = (w % 5 === 0);
+      zombiesTotal = 15 + (w - 1) * 8 + (isBossWave ? 1 : 0);
+      zombiesSpawned = 0;
+      zombiesKilled = 0;
+      spawnTimer = 0;
+      spawnInterval = Math.max(0.35, 1.2 - w * 0.06);
+
+      if (isBossWave) {
+        bossAlert.style.display = 'flex';
+        Sound.boss();
+        setTimeout(() => bossAlert.style.display = 'none', 3000);
+      } else {
+        bossAlert.style.display = 'none';
+      }
+      updateHUD();
+    }
+
+    function updateHUD() {
+      hudLevel.innerText = `LVL ${level}`;
+      const xpPct = Math.min(100, Math.round((xp / maxXp) * 100));
+      hudXpText.innerText = `${xp} / ${maxXp} (${xpPct}%)`;
+      hudXpFill.style.width = `${xpPct}%`;
+
+      const hpPct = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+      hudHpText.innerText = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+      hudHpFill.style.width = `${hpPct}%`;
+
+      hudWaveTitle.innerText = `WAVE ${wave}${isBossWave ? ' (BOSS)' : ''}`;
+      hudZombiesRem.innerText = Math.max(0, zombiesTotal - zombiesKilled);
+      hudZombiesTotal.innerText = zombiesTotal;
+      hudScore.innerText = score.toLocaleString();
+    }
+
+    // --- Main Game Loop ---
+    let lastTime = 0;
+    function gameLoop(time) {
+      if (gameState !== 'PLAYING') return;
+      const delta = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      update(delta);
+      render();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function update(dt) {
+      // 1. Player Movement
+      let mx = 0, my = 0;
+      if (keys['w'] || keys['arrowup']) my -= 1;
+      if (keys['s'] || keys['arrowdown']) my += 1;
+      if (keys['a'] || keys['arrowleft']) mx -= 1;
+      if (keys['d'] || keys['arrowright']) mx += 1;
+
+      const len = Math.hypot(mx, my);
+      if (len > 0) {
+        player.x += (mx / len) * player.speed;
+        player.y += (my / len) * player.speed;
+      }
+      player.x = Math.max(player.radius + 15, Math.min(ARENA_W - player.radius - 15, player.x));
+      player.y = Math.max(player.radius + 15, Math.min(ARENA_H - player.radius - 15, player.y));
+
+      if (player.invincibleTimer > 0) player.invincibleTimer -= dt;
+
+      // 2. Auto-Aim Nearest Zombie
+      let target = null;
+      let closest = Infinity;
+      for (const z of zombies) {
+        const d = Math.hypot(z.x - player.x, z.y - player.y);
+        if (d < closest) {
+          closest = d;
+          target = z;
+        }
+      }
+      if (target) {
+        player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+      }
+
+      // 3. Shooting
+      player.fireCooldown -= dt;
+      if (player.fireCooldown <= 0 && target) {
+        fireBullets(target);
+        player.fireCooldown = 1 / player.fireRate;
+      }
+
+      // 4. Update Bullets
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx;
+        b.y += b.vy;
+        b.dist += Math.hypot(b.vx, b.vy);
+
+        if (b.dist > 700 || b.x < 0 || b.x > ARENA_W || b.y < 0 || b.y > ARENA_H) {
+          bullets.splice(i, 1);
+          continue;
+        }
+
+        // Zombie collision
+        let hit = false;
+        for (const z of zombies) {
+          if (b.hitIds.includes(z.id)) continue;
+          if (Math.hypot(b.x - z.x, b.y - z.y) <= b.radius + z.radius) {
+            b.hitIds.push(z.id);
+            damageZombie(z, b.damage, b.vx, b.vy);
+            b.pierce--;
+            if (b.pierce <= 0) {
+              bullets.splice(i, 1);
+              hit = true;
+              break;
+            }
+          }
+        }
+        if (hit) continue;
+      }
+
+      // 5. Update Zombies
+      for (let i = 0; i < zombies.length; i++) {
+        const z = zombies[i];
+        if (z.flashTimer > 0) z.flashTimer -= dt;
+
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const dist = Math.hypot(dx, dy);
+        z.angle = Math.atan2(dy, dx);
+
+        if (dist > 0) {
+          z.x += (dx / dist) * z.speed;
+          z.y += (dy / dist) * z.speed;
+        }
+
+        // Hit player
+        if (dist <= z.radius + player.radius) {
+          hitPlayer(z.damage);
+        }
+      }
+
+      // 6. Update Coins (Magnetic pickup)
+      for (let i = coins.length - 1; i >= 0; i--) {
+        const c = coins[i];
+        c.pulse += dt * 4;
+        const d = Math.hypot(player.x - c.x, player.y - c.y);
+
+        if (d < player.magnetRange) {
+          c.x += ((player.x - c.x) / d) * 9;
+          c.y += ((player.y - c.y) / d) * 9;
+        }
+
+        if (d <= player.radius + c.radius + 6) {
+          Sound.coin();
+          xp += c.value;
+          score += 15;
+          coins.splice(i, 1);
+
+          if (xp >= maxXp) {
+            triggerLevelUp();
+          } else {
+            updateHUD();
+          }
+        }
+      }
+
+      // 7. Spawning & Wave Logic
+      if (zombiesSpawned < zombiesTotal) {
+        spawnTimer += dt;
+        if (spawnTimer >= spawnInterval) {
+          spawnTimer = 0;
+          spawnZombie();
+        }
+      } else if (zombies.length === 0 && zombiesKilled >= zombiesTotal) {
+        initWave(wave + 1);
+      }
+
+      // 8. Floating numbers & particles
+      for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        const ft = floatingTexts[i];
+        ft.life += dt;
+        ft.y -= 25 * dt;
+        if (ft.life >= 0.7) floatingTexts.splice(i, 1);
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life += dt;
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.life >= 0.3) particles.splice(i, 1);
+      }
+
+      // Camera smooth follow
+      cameraX += ((player.x - W / 2) - cameraX) * 0.1;
+      cameraY += ((player.y - H / 2) - cameraY) * 0.1;
+      cameraX = Math.max(0, Math.min(ARENA_W - W, cameraX));
+      cameraY = Math.max(0, Math.min(ARENA_H - H, cameraY));
+    }
+
+    function fireBullets(target) {
+      const aimAngle = Math.atan2(target.y - player.y, target.x - player.x);
+      const count = player.bulletCount;
+      const spread = player.bulletSpread;
+
+      for (let i = 0; i < count; i++) {
+        let angle = aimAngle;
+        if (count > 1) {
+          angle += (i / (count - 1) - 0.5) * spread;
+        }
+        bullets.push({
+          x: player.x + Math.cos(angle) * (player.radius + 8),
+          y: player.y + Math.sin(angle) * (player.radius + 8),
+          vx: Math.cos(angle) * player.bulletSpeed,
+          vy: Math.sin(angle) * player.bulletSpeed,
+          radius: 4.5,
+          damage: player.bulletDamage,
+          pierce: player.pierce,
+          dist: 0,
+          hitIds: []
+        });
+      }
+      Sound.shoot();
+    }
+
+    function spawnZombie() {
+      const isBoss = isBossWave && (zombiesSpawned === zombiesTotal - 1);
+      let x = 0, y = 0;
+      const side = Math.floor(Math.random() * 4);
+      if (side === 0) { x = Math.random() * ARENA_W; y = 20; }
+      else if (side === 1) { x = Math.random() * ARENA_W; y = ARENA_H - 20; }
+      else if (side === 2) { x = 20; y = Math.random() * ARENA_H; }
+      else { x = ARENA_W - 20; y = Math.random() * ARENA_H; }
+
+      const baseHp = 20 + (wave - 1) * 8;
+      const baseSpd = 1.35 + Math.min(1.6, (wave - 1) * 0.08);
+
+      if (isBoss) {
+        const bossHp = 250 + wave * 140;
+        zombies.push({
+          id: nextId++,
+          x, y,
+          radius: 36,
+          speed: baseSpd * 0.7,
+          hp: bossHp,
+          maxHp: bossHp,
+          damage: 30,
+          isBoss: true,
+          color: '#9333ea',
+          flashTimer: 0,
+          coinVal: 8
+        });
+      } else {
+        zombies.push({
+          id: nextId++,
+          x, y,
+          radius: 14,
+          speed: baseSpd * (0.85 + Math.random() * 0.3),
+          hp: baseHp,
+          maxHp: baseHp,
+          damage: 10 + Math.floor(wave * 1.5),
+          isBoss: false,
+          color: '#dc2626',
+          flashTimer: 0,
+          coinVal: 1
+        });
+      }
+      zombiesSpawned++;
+      updateHUD();
+    }
+
+    function damageZombie(z, dmg, vx, vy) {
+      z.hp -= dmg;
+      z.flashTimer = 0.12;
+      z.x += (vx || 0) * (z.isBoss ? 0.1 : 0.5);
+      z.y += (vy || 0) * (z.isBoss ? 0.1 : 0.5);
+
+      Sound.hit();
+      floatingTexts.push({ x: z.x, y: z.y - 12, text: `${dmg}`, color: z.isBoss ? '#f43f5e' : '#fff', life: 0 });
+
+      if (z.hp <= 0) {
+        const idx = zombies.indexOf(z);
+        if (idx !== -1) zombies.splice(idx, 1);
+        kills++;
+        score += z.isBoss ? 500 : 50;
+        zombiesKilled++;
+
+        bloodSplats.push({ x: z.x, y: z.y, radius: z.isBoss ? 45 : 18 });
+        for (let c = 0; c < z.coinVal; c++) {
+          coins.push({
+            x: z.x + (Math.random() * 20 - 10),
+            y: z.y + (Math.random() * 20 - 10),
+            radius: 6,
+            value: 1,
+            pulse: 0
+          });
+        }
+        updateHUD();
+      }
+    }
+
+    function hitPlayer(dmg) {
+      if (player.invincibleTimer > 0) return;
+      player.hp -= dmg;
+      player.invincibleTimer = 0.5;
+      Sound.hit();
+      floatingTexts.push({ x: player.x, y: player.y - 20, text: `-${dmg}`, color: '#ef4444', life: 0 });
+      updateHUD();
+
+      if (player.hp <= 0) {
+        gameOver();
+      }
+    }
+
+    function triggerLevelUp() {
+      level++;
+      xp = xp - maxXp;
+      maxXp = Math.round(maxXp * 1.35 + 4);
+      Sound.levelUp();
+      updateHUD();
+
+      gameState = 'UPGRADE';
+      // Pick 3 random upgrades
+      const shuffled = [...UPGRADES].sort(() => 0.5 - Math.random());
+      currentChoices = shuffled.slice(0, 3);
+
+      const grid = document.getElementById('upgradeGrid');
+      grid.innerHTML = '';
+      currentChoices.forEach((opt, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'upgrade-btn';
+        btn.innerHTML = `
+          <div class="up-key">[${idx + 1}]</div>
+          <span class="up-tag">BUFF</span>
+          <div class="up-title">${opt.title}</div>
+          <div class="up-desc">${opt.desc}</div>
+        `;
+        btn.onclick = () => selectUpgrade(opt);
+        grid.appendChild(btn);
+      });
+
+      upgradeModal.style.display = 'flex';
+    }
+
+    function selectUpgrade(opt) {
+      opt.apply(player);
+      upgradeModal.style.display = 'none';
+      gameState = 'PLAYING';
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+      gameState = 'GAMEOVER';
+      document.getElementById('statFinalScore').innerText = score.toLocaleString();
+      document.getElementById('statFinalWave').innerText = wave;
+      document.getElementById('statFinalKills').innerText = kills;
+      document.getElementById('statFinalLevel').innerText = level;
+      gameOverModal.style.display = 'flex';
+    }
+
+    // --- Canvas Rendering ---
+    function render() {
+      ctx.save();
+      ctx.clearRect(0, 0, W, H);
+      ctx.translate(-cameraX, -cameraY);
+
+      // Arena Ground
+      ctx.fillStyle = '#171412';
+      ctx.fillRect(0, 0, ARENA_W, ARENA_H);
+
+      // Arena Grid
+      ctx.strokeStyle = '#231e1a';
+      ctx.lineWidth = 1;
+      const step = 60;
+      for (let x = 0; x <= ARENA_W; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ARENA_H); ctx.stroke();
+      }
+      for (let y = 0; y <= ARENA_H; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(ARENA_W, y); ctx.stroke();
+      }
+
+      // Blood Splats
+      for (const s of bloodSplats) {
+        ctx.fillStyle = 'rgba(127, 29, 29, 0.45)';
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Coins
+      for (const c of coins) {
+        const pulse = 1 + Math.sin(c.pulse) * 0.15;
+        ctx.fillStyle = '#facc15';
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.radius * pulse, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Bullets (yellow dots)
+      for (const b of bullets) {
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // Zombies
+      for (const z of zombies) {
+        ctx.save();
+        ctx.translate(z.x, z.y);
+        ctx.rotate(z.angle);
+
+        if (z.isBoss) {
+          // Boss Aura & Large Circle
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(0, 0, z.radius + 6, 0, Math.PI * 2); ctx.stroke();
+
+          ctx.fillStyle = z.flashTimer > 0 ? '#fff' : z.color;
+          ctx.beginPath(); ctx.arc(0, 0, z.radius, 0, Math.PI * 2); ctx.fill();
+
+          ctx.fillStyle = '#ef4444';
+          ctx.beginPath();
+          ctx.arc(z.radius * 0.35, -z.radius * 0.25, 4, 0, Math.PI * 2);
+          ctx.arc(z.radius * 0.35, z.radius * 0.25, 4, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Normal Zombie: Red circle
+          ctx.fillStyle = z.flashTimer > 0 ? '#fff' : z.color;
+          ctx.strokeStyle = '#991b1b';
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(0, 0, z.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(z.radius * 0.35, -4, 2.5, 0, Math.PI * 2);
+          ctx.arc(z.radius * 0.35, 4, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // Boss Health Bar above boss
+        if (z.isBoss) {
+          const barW = 80;
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.fillRect(z.x - barW / 2 - 2, z.y - z.radius - 20, barW + 4, 10);
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(z.x - barW / 2, z.y - z.radius - 18, barW * (z.hp / z.maxHp), 6);
+        }
+      }
+
+      // Player: Blue circle with barrel line
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      if (player.invincibleTimer > 0 && Math.sin(Date.now() * 0.03) > 0) ctx.globalAlpha = 0.4;
+      ctx.rotate(player.angle);
+
+      // Barrel line
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, -3.5, player.radius + 12, 7);
+
+      // Body
+      ctx.fillStyle = '#2563eb';
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+
+      // Floating damage numbers
+      for (const ft of floatingTexts) {
+        ctx.fillStyle = ft.color;
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(ft.text, ft.x, ft.y);
+      }
+
+      // Arena Border
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(4, 4, ARENA_W - 8, ARENA_H - 8);
+
+      ctx.restore();
+    }
+  </script>
+</body>
+</html>

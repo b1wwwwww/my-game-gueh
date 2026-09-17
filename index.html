@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      (function() {
+        try {
+          var _origFetch = typeof window !== 'undefined' && window.fetch ? window.fetch.bind(window) : undefined;
+          var _fetch = _origFetch;
+
+          // Catch any uncaught TypeError regarding 'fetch' having only a getter
+          if (typeof window !== 'undefined') {
+            window.addEventListener('error', function(event) {
+              if (event && event.message && event.message.indexOf('fetch') !== -1 && event.message.indexOf('getter') !== -1) {
+                if (event.preventDefault) event.preventDefault();
+                if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+                return true;
+              }
+            }, true);
+
+            var _prevOnError = window.onerror;
+            window.onerror = function(msg) {
+              if (typeof msg === 'string' && msg.indexOf('fetch') !== -1 && msg.indexOf('getter') !== -1) {
+                return true;
+              }
+              if (_prevOnError) return _prevOnError.apply(this, arguments);
+            };
+          }
+
+          var defineFetch = function(obj) {
+            if (!obj) return;
+            try {
+              var desc = Object.getOwnPropertyDescriptor(obj, 'fetch');
+              if (!desc || desc.configurable || desc.set === undefined) {
+                Object.defineProperty(obj, 'fetch', {
+                  get: function() {
+                    return _fetch;
+                  },
+                  set: function(val) {
+                    _fetch = val;
+                  },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            } catch (e) {}
+          };
+
+          defineFetch(window);
+          if (typeof Window !== 'undefined' && Window.prototype) {
+            defineFetch(Window.prototype);
+          }
+          var proto = typeof window !== 'undefined' ? Object.getPrototypeOf(window) : null;
+          while (proto) {
+            defineFetch(proto);
+            proto = Object.getPrototypeOf(proto);
+          }
+          if (typeof globalThis !== 'undefined') {
+            defineFetch(globalThis);
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zombie Rush: Top-Down Survivor</title>
+    <meta name="description" content="A fast-paced 2D top-down survivor arena game featuring waves of zombies, boss encounters, auto-aim shooting, XP leveling, and randomized upgrades." />
+    <meta property="og:title" content="Zombie Rush: Top-Down Survivor" />
+    <meta property="og:description" content="A fast-paced 2D top-down survivor arena game featuring waves of zombies, boss encounters, auto-aim shooting, XP leveling, and randomized upgrades." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
