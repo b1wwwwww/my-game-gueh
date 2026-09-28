@@ -474,6 +474,38 @@ class SoundController {
       // Audio error ignored
     }
   }
+
+  // Triumphant Achievement Unlocked fanfare chime
+  public playAchievement() {
+    if (this.isMuted) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+
+      notes.forEach((freq, idx) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const noteTime = now + idx * 0.09;
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, noteTime);
+
+        gain.gain.setValueAtTime(0.18, noteTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.35);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(noteTime);
+        osc.stop(noteTime + 0.35);
+      });
+    } catch {
+      // Audio error ignored
+    }
+  }
 }
 
 export const sounds = new SoundController();

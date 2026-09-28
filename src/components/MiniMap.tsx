@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { GameEngine } from '../game/engine';
-import { Radar, Package, Skull, Crosshair, ChevronDown, ChevronUp } from 'lucide-react';
+import { Radar, Package, Skull, Crosshair, ChevronDown, ChevronUp, ArrowRightLeft } from 'lucide-react';
 
 interface MiniMapProps {
   engine: GameEngine | null;
@@ -9,6 +9,7 @@ interface MiniMapProps {
 export const MiniMap: React.FC<MiniMapProps> = ({ engine }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [position, setPosition] = useState<'top-right' | 'top-left'>('top-right');
   const [zombieCount, setZombieCount] = useState(0);
   const [bossPresent, setBossPresent] = useState(false);
   const [activeDropsCount, setActiveDropsCount] = useState(0);
@@ -16,6 +17,18 @@ export const MiniMap: React.FC<MiniMapProps> = ({ engine }) => {
   // Map canvas logical resolution (matches 1800:1400 aspect ratio)
   const mapWidth = 180;
   const mapHeight = 140;
+
+  // Toggle mini-map with 'M' key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'm' || e.key === 'M') {
+        setIsCollapsed((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     let animationFrameId: number;
@@ -238,38 +251,52 @@ export const MiniMap: React.FC<MiniMapProps> = ({ engine }) => {
     };
   }, [engine]);
 
+  const positionClasses = position === 'top-left'
+    ? 'top-3 left-3 sm:top-5 sm:left-5'
+    : 'top-3 right-3 sm:top-5 sm:right-5';
+
   return (
     <div
       id="mini-map-container"
-      className="absolute bottom-4 left-4 z-30 flex flex-col bg-neutral-950/85 backdrop-blur-md rounded-2xl border border-neutral-800 shadow-2xl overflow-hidden pointer-events-auto transition-all"
+      className={`absolute ${positionClasses} z-30 flex flex-col bg-neutral-950/85 backdrop-blur-md rounded-2xl border border-neutral-800 shadow-2xl overflow-hidden pointer-events-auto transition-all`}
     >
       {/* Mini-Map Header Bar */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-900/90 border-b border-neutral-800 text-[11px] font-mono select-none">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-900/90 border-b border-neutral-800 text-[11px] font-mono select-none gap-2">
         <div className="flex items-center gap-1.5 font-bold text-neutral-300">
           <Radar className={`w-3.5 h-3.5 text-cyan-400 ${bossPresent ? 'animate-spin' : ''}`} />
           <span className="tracking-wider">RADAR</span>
+          <span className="text-[9px] text-neutral-500 font-mono hidden sm:inline">[M]</span>
         </div>
 
-        {/* Live Counters */}
+        {/* Live Counters & Controls */}
         <div className="flex items-center gap-2 text-[10px]">
           {activeDropsCount > 0 && (
-            <div className="flex items-center gap-1 text-cyan-400 font-semibold animate-pulse">
+            <div className="flex items-center gap-1 text-cyan-400 font-semibold animate-pulse" title="Active Supply Drops">
               <Package className="w-3 h-3" />
               <span>{activeDropsCount}</span>
             </div>
           )}
 
-          <div className={`flex items-center gap-0.5 font-semibold ${bossPresent ? 'text-rose-400 font-bold' : 'text-red-400'}`}>
+          <div className={`flex items-center gap-0.5 font-semibold ${bossPresent ? 'text-rose-400 font-bold' : 'text-red-400'}`} title="Zombies Nearby">
             <Skull className="w-3 h-3" />
             <span>{zombieCount}</span>
           </div>
 
+          {/* Toggle Corner Position */}
+          <button
+            onClick={() => setPosition((prev) => (prev === 'top-right' ? 'top-left' : 'top-right'))}
+            className="text-neutral-400 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
+            title={`Move Radar to ${position === 'top-right' ? 'Top-Left' : 'Top-Right'}`}
+          >
+            <ArrowRightLeft className="w-3 h-3" />
+          </button>
+
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="text-neutral-400 hover:text-white p-0.5 rounded cursor-pointer transition-colors"
-            title={isCollapsed ? 'Expand Mini-Map' : 'Minimize Mini-Map'}
+            title={isCollapsed ? 'Expand Mini-Map (M)' : 'Minimize Mini-Map (M)'}
           >
-            {isCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {isCollapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>

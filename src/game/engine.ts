@@ -2082,6 +2082,32 @@ export class GameEngine {
     ctx.save();
     ctx.translate(p.x, p.y);
 
+    // Overhead Health Bar above player head (horizontal / unrotated)
+    const barWidth = 36;
+    const barHeight = 4.5;
+    const barX = -barWidth / 2;
+    const barY = -p.radius - 14;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(10, 15, 25, 0.88)';
+    ctx.fillRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2);
+
+    const hpRatio = Math.max(0, Math.min(1, p.hp / p.maxHp));
+    const hpColor = hpRatio > 0.5 ? '#22c55e' : hpRatio > 0.25 ? '#f59e0b' : '#ef4444';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+
+    // If shield active, draw glowing cyan border around the overhead bar
+    if (p.shieldActive && p.shieldCooldown <= 0) {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX - 1.5, barY - 1.5, barWidth + 3, barHeight + 3);
+    }
+    ctx.restore();
+
     // If invincibility active (or dashing), pulse alpha
     if (p.invincibleTimer > 0) {
       ctx.globalAlpha = Math.sin(Date.now() * 0.03) > 0 ? 0.35 : 0.9;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward, Heart } from 'lucide-react';
 import { SupplyDropType } from '../game/types';
 import { HeroClassId, HERO_CLASSES } from '../game/classes';
 
@@ -95,7 +95,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {/* Top Header Row */}
       <div className="flex flex-col items-center w-full gap-2">
         {/* Prominent XP / Coin Bar at the top */}
-        <div className="w-full max-w-xl flex items-center gap-3 bg-neutral-950/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-neutral-800 shadow-xl pointer-events-auto">
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-lg flex items-center gap-3 bg-neutral-950/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-neutral-800 shadow-xl pointer-events-auto">
           {/* Level Badge */}
           <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-cyan-950 border border-cyan-500/50 text-cyan-400 font-extrabold text-xs sm:text-sm tracking-wider shadow-inner shrink-0">
             <span className="text-amber-400">♦</span> LVL {level}
@@ -161,8 +161,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {/* Main HUD Row (Player Stats Left, Dash & Wave Center, Actions Right) */}
       <div className="flex items-end justify-between w-full pointer-events-auto gap-2">
         {/* Left Side: Player HP, Hero Class & Weapons */}
-        <div className="flex flex-col gap-2 bg-neutral-950/85 backdrop-blur-md p-3 sm:p-4 rounded-2xl border border-neutral-800 shadow-lg min-w-[200px] sm:min-w-[240px]">
-          <div className="flex items-center justify-between">
+        <div
+          id="player-health-card"
+          className={`flex flex-col gap-2 bg-neutral-950/90 backdrop-blur-md p-3 sm:p-4 rounded-2xl border shadow-xl min-w-[210px] sm:min-w-[250px] transition-all ${
+            hpPercent <= 25 ? 'border-rose-500/80 shadow-[0_0_20px_rgba(244,63,94,0.35)] animate-pulse' : 'border-neutral-800'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               {/* Hero Class Avatar Badge */}
               <div
@@ -179,20 +184,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </span>
               </div>
             </div>
-            <span className="text-xs font-mono font-bold text-white">
-              {Math.max(0, Math.ceil(hp))} / {maxHp}
-            </span>
+
+            {/* HP Value with Heart Icon */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-neutral-900 border border-neutral-800 font-mono text-xs font-extrabold shadow-inner">
+              <Heart className={`w-3.5 h-3.5 ${hpPercent > 25 ? 'text-rose-500 fill-rose-500' : 'text-red-500 fill-red-500 animate-ping'}`} />
+              <span className={hpPercent > 50 ? 'text-emerald-400' : hpPercent > 25 ? 'text-amber-400' : 'text-rose-400 font-black'}>
+                {Math.max(0, Math.ceil(hp))}
+              </span>
+              <span className="text-neutral-500 font-normal">/{maxHp}</span>
+            </div>
           </div>
 
-          {/* Health Bar */}
-          <div className="w-full h-3.5 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-neutral-700 shadow-inner">
+          {/* Health Bar with numeric percentage */}
+          <div className="relative w-full h-4 bg-neutral-900 rounded-full overflow-hidden p-0.5 border border-neutral-700 shadow-inner">
             <div
               className={`h-full rounded-full transition-all duration-150 ${
                 hpPercent > 50
-                  ? 'bg-gradient-to-r from-emerald-500 to-green-400 shadow-[0_0_8px_rgba(34,197,94,0.4)]'
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-400 shadow-[0_0_8px_rgba(34,197,94,0.5)]'
                   : hpPercent > 25
                   ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
-                  : 'bg-gradient-to-r from-red-600 to-rose-500 shadow-[0_0_10px_rgba(239,68,68,0.7)] animate-pulse'
+                  : 'bg-gradient-to-r from-red-600 to-rose-500 shadow-[0_0_12px_rgba(239,68,68,0.8)] animate-pulse'
               }`}
               style={{ width: `${hpPercent}%` }}
             />

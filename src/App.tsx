@@ -208,7 +208,7 @@ export default function App() {
               heroClass={selectedHeroClass}
               autoWeapons={autoWeapons}
             />
-            {/* Tactical Mini-Map in bottom-left corner */}
+            {/* Tactical Mini-Map in top-right corner (toggleable & collapsible) */}
             <MiniMap engine={engineRef.current} />
           </>
         )}
