@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: 'Chakra Petch', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background-color: #07090e;
+  color: #f1f5f9;
+}
+
+.font-display {
+  font-family: 'Chakra Petch', sans-serif;
+}

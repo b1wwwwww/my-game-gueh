@@ -2,6 +2,7 @@ import React from 'react';
 import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward, Heart } from 'lucide-react';
 import { SupplyDropType } from '../game/types';
 import { HeroClassId, HERO_CLASSES } from '../game/classes';
+import { OperativeInsignia } from './OperativeInsignia';
 
 interface BuffInfo {
   type: SupplyDropType;
@@ -169,14 +170,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {/* Hero Class Avatar Badge */}
-              <div
-                className="w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold text-white shadow-md border"
-                style={{ backgroundColor: heroConfig.color, borderColor: heroConfig.accentColor }}
-                title={`${heroConfig.name} - ${heroConfig.role}`}
-              >
-                <span>{heroConfig.badge}</span>
-              </div>
+              {/* Hero Class Vector Insignia */}
+              <OperativeInsignia classId={heroClass} size="sm" active={true} />
               <div className="flex flex-col">
                 <span className="text-xs font-black text-white leading-tight">{heroConfig.name}</span>
                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: heroConfig.accentColor }}>

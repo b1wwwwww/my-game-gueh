@@ -3,10 +3,14 @@ export type HeroClassId = 'commando' | 'demolitionist' | 'scout';
 export interface HeroClassConfig {
   id: HeroClassId;
   name: string;
+  callsign: string;
+  code: string;
+  division: string;
   role: string;
   tagline: string;
   description: string;
   badge: string;
+  portrait?: string;
   color: string;
   accentColor: string;
   glowColor: string;
@@ -31,13 +35,16 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassConfig> = {
   commando: {
     id: 'commando',
     name: 'Commando',
+    callsign: 'STRIKER-1',
+    code: 'VNG-01',
+    division: 'Vanguard Assault Corp',
     role: 'Heavy Assault',
     tagline: 'Rapid Firepower & Bullet Penetration',
     description: 'Battlefield-tested veteran equipped with a high-caliber assault rifle. Shreds hordes with high rate of fire and penetrating ammunition.',
-    badge: '🎖️',
-    color: '#3b82f6', // Cobalt blue / navy
+    badge: 'VNG',
+    color: '#2563eb', // Cobalt blue / navy
     accentColor: '#60a5fa',
-    glowColor: 'rgba(59, 130, 246, 0.4)',
+    glowColor: 'rgba(37, 99, 235, 0.4)',
     bulletColor: '#60a5fa',
     baseHp: 100,
     baseSpeed: 3.8,
@@ -57,13 +64,16 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassConfig> = {
   demolitionist: {
     id: 'demolitionist',
     name: 'Demolitionist',
+    callsign: 'VULCAN-7',
+    code: 'ORD-02',
+    division: 'Siege & Ordnance Division',
     role: 'Blast Engineer',
     tagline: 'Explosive Payload & Area Denial',
     description: 'Heavy explosive specialist clad in blast-proof armor. Bullets trigger micro-detonations and starts with an Orbiting Plasma Saw.',
-    badge: '💥',
-    color: '#f97316', // Blaze orange
+    badge: 'ORD',
+    color: '#ea580c', // Blaze orange
     accentColor: '#fb923c',
-    glowColor: 'rgba(249, 115, 22, 0.4)',
+    glowColor: 'rgba(234, 88, 12, 0.4)',
     bulletColor: '#fb923c',
     baseHp: 130, // Tougher
     baseSpeed: 3.5,
@@ -83,13 +93,16 @@ export const HERO_CLASSES: Record<HeroClassId, HeroClassConfig> = {
   scout: {
     id: 'scout',
     name: 'Recon Scout',
+    callsign: 'SPECTRE-9',
+    code: 'RCN-03',
+    division: 'Cyber Reconnaissance Wing',
     role: 'Cyber Infiltrator',
     tagline: 'Hyper Mobility & Autonomous Drone',
     description: 'Agile operative armed with cybernetic thrust boosters and an automated combat drone companion that snipes approaching zombies.',
-    badge: '⚡',
-    color: '#06b6d4', // Neon cyan
+    badge: 'RCN',
+    color: '#0891b2', // Neon cyan
     accentColor: '#22d3ee',
-    glowColor: 'rgba(6, 182, 212, 0.4)',
+    glowColor: 'rgba(8, 145, 178, 0.4)',
     bulletColor: '#22d3ee',
     baseHp: 85,
     baseSpeed: 4.6, // Fast cyber mobility
