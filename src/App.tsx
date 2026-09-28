@@ -5,6 +5,7 @@ import { MiniMap } from './components/MiniMap';
 import { UpgradeModal } from './components/UpgradeModal';
 import { GameOverModal } from './components/GameOverModal';
 import { StartScreen } from './components/StartScreen';
+import { PauseModal } from './components/PauseModal';
 import { UpgradeOption, GameState } from './game/types';
 import { HeroClassId } from './game/classes';
 import { getRandomUpgrades, applyUpgradeToPlayer } from './game/upgrades';
@@ -161,6 +162,15 @@ export default function App() {
     }
   }, [gameState]);
 
+  const handleReturnToMainMenu = useCallback(() => {
+    sounds.playHit();
+    if (engineRef.current) {
+      engineRef.current.pause();
+    }
+    setGameState('START');
+    setGameOverStats(null);
+  }, []);
+
   const handleToggleMute = useCallback(() => {
     const muted = sounds.toggleMute();
     setIsMuted(muted);
@@ -199,6 +209,7 @@ export default function App() {
               isMuted={isMuted}
               onTogglePause={handleTogglePause}
               onToggleMute={handleToggleMute}
+              onReturnToMainMenu={handleReturnToMainMenu}
               shieldActive={shieldActive}
               shieldCooldown={shieldCooldown}
               dashCooldown={dashCooldown}
@@ -230,30 +241,17 @@ export default function App() {
           />
         )}
 
-        {/* Pause Overlay Screen */}
+        {/* Tactical Pause Modal with Resume, Restart, and Return to Main Menu */}
         {gameState === 'PAUSED' && (
-          <div id="pause-overlay" className="absolute inset-0 z-40 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 max-w-sm w-full text-center flex flex-col items-center shadow-2xl">
-              <h2 className="text-3xl font-black text-white mb-2 tracking-wider">GAME PAUSED</h2>
-              <p className="text-xs text-neutral-400 mb-6">Take a breather before diving back into the rush</p>
-
-              <button
-                id="btn-resume-game"
-                onClick={handleTogglePause}
-                className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white font-bold text-sm transition-all mb-3 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-cyan-900/40"
-              >
-                <Play className="w-4 h-4 fill-white" /> Resume (P / Esc)
-              </button>
-
-              <button
-                id="btn-restart-from-pause"
-                onClick={() => handleStartGame()}
-                className="w-full py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" /> Restart Match
-              </button>
-            </div>
-          </div>
+          <PauseModal
+            onResume={handleTogglePause}
+            onRestart={() => handleStartGame()}
+            onReturnToMainMenu={handleReturnToMainMenu}
+            wave={wave}
+            score={score}
+            kills={kills}
+            heroClass={selectedHeroClass}
+          />
         )}
 
         {/* Start Game Title Screen */}

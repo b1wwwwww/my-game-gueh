@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward, Heart } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Skull, Trophy, AlertTriangle, ShieldCheck, Zap, Magnet, Gauge, Crosshair, Bomb, Radio, Disc, Bot, FastForward, Heart, Home } from 'lucide-react';
 import { SupplyDropType } from '../game/types';
 import { HeroClassId, HERO_CLASSES } from '../game/classes';
 import { OperativeInsignia } from './OperativeInsignia';
@@ -30,6 +30,7 @@ interface GameHUDProps {
   isMuted: boolean;
   onTogglePause: () => void;
   onToggleMute: () => void;
+  onReturnToMainMenu?: () => void;
   shieldActive: boolean;
   shieldCooldown: number;
   dashCooldown?: number;
@@ -62,6 +63,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   isMuted,
   onTogglePause,
   onToggleMute,
+  onReturnToMainMenu,
   shieldActive,
   shieldCooldown,
   dashCooldown = 0,
@@ -327,11 +329,26 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           <button
             id="btn-toggle-pause"
             onClick={onTogglePause}
-            title={isPaused ? 'Resume Game' : 'Pause Game'}
+            title={isPaused ? 'Resume Game (P / Esc)' : 'Pause Game (P / Esc)'}
             className="p-2 sm:p-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 active:bg-neutral-700 text-neutral-300 hover:text-white border border-neutral-700 transition-colors cursor-pointer"
           >
             {isPaused ? <Play className="w-4 h-4 text-amber-400" /> : <Pause className="w-4 h-4 text-neutral-300" />}
           </button>
+
+          {/* Main Menu Return Button */}
+          {onReturnToMainMenu && (
+            <button
+              id="btn-return-main-menu-hud"
+              onClick={onReturnToMainMenu}
+              title="Return to Main Menu (Exit Run)"
+              className="p-2 sm:p-2.5 rounded-xl bg-neutral-900 hover:bg-rose-950/60 active:bg-rose-900 text-neutral-300 hover:text-rose-300 border border-neutral-700 hover:border-rose-700 transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Home className="w-4 h-4 text-neutral-400 group-hover:text-rose-400" />
+              <span className="hidden xl:inline text-[10px] font-mono font-bold uppercase tracking-wider">
+                Menu
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>
